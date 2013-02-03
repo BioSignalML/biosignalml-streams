@@ -54,22 +54,51 @@ Syntax
 
 import sys
 import shlex
+import signal
 import subprocess
+
+
+CONFIG_FILE = { 'pertecs': '-c' }
+
 
 class Command(object):
 #=====================
 
   def __init__(self, input, cmds, output):
   #---------------------------------------
-    self.input = input
-    self.commands = cmds
+    self._input = input
+    self._commands = cmds
     if output is not None and output.startswith('>'):
-      self.output = output[1:].strip()
-      self.outputmode = 'a'
+      self._output = output[1:].strip()
+      self._outputmode = 'a'
     else:
-      self.output = output
-      self.outputmode = 'w'
+      self._output = output
+      self._outputmode = 'w'
+    self._process = None
 
+  def interrupt(self, signum, frame):
+  #----------------------------------
+    if self._process is not None:
+      self._process.send_signal(signum)
+
+  def run(self):
+  #-------------
+    signal.signal(signal.SIGINT, self.interrupt)
+    stdin = sys.stdin if self._input is None else open(self._input, 'r')
+    stdout = subprocess.PIPE
+    lastcmd = (len(self._commands) - 1)
+    for n, cmd in enumerate(self._commands):
+      if n == lastcmd:
+        if self._output is None:
+          stdout = sys.stdout
+        else:
+          stdout = open(self._output, self._outputmode)
+      args = shlex.split(cmd)
+      self._process = subprocess.Popen(args, stdin=stdin, stdout=stdout)
+      # Could save process ids -- process.pid
+      if n > 0: stdin.close()
+      stdin = self._process.stdout
+    return self._process.wait()
 
 
 def commands(f):
@@ -132,16 +161,9 @@ if __name__ == '__main__':
     sys.exit("Usage: %s COMMAND_FILE" % sys.argv[0])
 
   for c in commands(open(sys.argv[1], 'r')):
-    stdin = sys.stdin if c.input is None else open(c.input, 'r')
-    stdout = subprocess.PIPE
-    lastcmd = (len(c.commands) - 1)
-    for n, p in enumerate(c.commands):
-      if n == lastcmd: stdout = sys.stdout if c.output is None else open(c.output, c.outputmode)
-      args = shlex.split(p)
-      process = subprocess.Popen(args, stdin=stdin, stdout=stdout)
-      # Could save process ids -- process.pid
-      if n > 0: stdin.close()
-      stdin = process.stdout
+    print c.run()
+
+
 
 
 ## Need to catch ^C and terminate() or kill() process -- which one??
