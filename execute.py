@@ -84,90 +84,109 @@ class Command(object):
   def run(self):
   #-------------
     signal.signal(signal.SIGINT, self.interrupt)
-    stdin = sys.stdin if self._input is None else open(self._input, 'r')
+    stdin = (sys.stdin if self._input in [None, ''] else
+             open(self._input, 'r'))
     stdout = subprocess.PIPE
     lastcmd = (len(self._commands) - 1)
     for n, cmd in enumerate(self._commands):
       if n == lastcmd:
-        if self._output is None:
-          stdout = sys.stdout
-        else:
-          stdout = open(self._output, self._outputmode)
-      args = shlex.split(cmd)
-      self._process = subprocess.Popen(args, stdin=stdin, stdout=stdout)
+        stdout = (sys.stdout if self._output in [None, ''] else
+                  open(self._output, self._outputmode))
+      self._process = subprocess.Popen(cmd, stdin=stdin, stdout=stdout)
       # Could save process ids -- process.pid
       if n > 0: stdin.close()
       stdin = self._process.stdout
     return self._process.wait()
 
 
-def commands(f):
-#===============
+def commands(script, params):
+#============================
 
   def clean(line):
   #---------------
     return l[1:].strip()
 
+  def expand(word):
+  #----------------
+    i = 0
+    result = [ ]
+    while True:
+      d = word[i:].find('$')
+      if d < 0:
+        result.append(word[i:])
+        break
+      d += i       # Index into word, not sub-string
+      i = d + 1
+      while word[i:i+1].isdigit():
+        i += 1
+      if i == (d+1):        # '$' without following parameter number
+        result.append(word[d:i])
+      else:
+        p = int(word[d+1:i])
+        if p < len(params): result.append(params[p])
+        else:               result.append('')
+    return ''.join(result)
+
+  def expanded(cmds):
+  #------------------
+    return [[expand(c) for c in shlex.split(cmd)] for cmd in cmds]
+
   cmds = [ ]
   input = None
   output = None
-  for l in f:
+  for l in script:
     l = l.rstrip()  # Removes '\n'
-
     if l == '' or l.strip()[0] == '#':
       continue
-
     if l[0] in ['<', ' ']:
       if cmds:
-        yield Command(input, cmds, output)
+        yield Command(input, expanded(cmds), output)
         output = None
         input = None
         cmds = [ ]
       if l[0] == '<':
         if input is not None:
           raise ValueError("No command to send input to")
-        input = shlex.split(clean(l))[0]
+        input = expand(shlex.split(clean(l))[0])
       else:
         if input is not None:
           raise ValueError("Input needs a pipe")
         cmds.append(clean(l))
-
     elif l[0] == '-':
       if not cmds:
         raise ValueError("No command to continue")
       cmds[-1] += ' ' + clean(l)
-
     elif l[0] == '|':
       if input is None and not cmds:
         raise ValueError("No preceding command")
       cmds.append(clean(l))
-
     elif l[0] == '>':
       if not cmds:
         raise ValueError("No preceding command")
-      output = shlex.split(clean(l))[0]
-      yield Command(input, cmds, output)
+      output = expand(shlex.split(clean(l))[0])
+      yield Command(input, expanded(cmds), output)
       output = None
       input = None
       cmds = [ ]
-
-  if cmds: yield Command(input, cmds, output)
+  if cmds: yield Command(input, expanded(cmds), output)
 
 
 if __name__ == '__main__':
 #=========================
 
   if len(sys.argv) < 2:
-    sys.exit("Usage: %s COMMAND_FILE" % sys.argv[0])
+    sys.exit("Usage: %s [options] COMMAND_FILE [params]" % sys.argv[0])
 
-  for c in commands(open(sys.argv[1], 'r')):
-    print c.run()
+  cmd = 1     # Position of command file in argument list...
+  ## options:  -n      Print commands but without executing them
+  ##           ??      Set working directory ??
+  ##           ??      Set controlled directory ??
 
+  ## params are expanded in COMMAND_FILE
 
+  exitcode = 0
 
+  for c in commands(open(sys.argv[cmd], 'r'), sys.argv[cmd:]):
+    exitcode = c.run()
 
-## Need to catch ^C and terminate() or kill() process -- which one??
-
-      #process.send_signal()
-      # test if stopped -- process.poll()
-
+  sys.exit(exitcode)
