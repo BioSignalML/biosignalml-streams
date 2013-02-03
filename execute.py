@@ -58,7 +58,7 @@ import signal
 import subprocess
 
 
-CONFIG_FILE = { 'pertecs': '-c' }
+CONFIG_OPTIONS = { 'pertecs': ('-c', '\\.*') }
 
 
 class Command(object):
@@ -75,6 +75,17 @@ class Command(object):
       self._output = output
       self._outputmode = 'w'
     self._process = None
+
+  def controlled_files(self):
+  #--------------------------
+    controlled = [ ] if self._input is None else [self._input]
+    for cmd in self._commands:
+      try:
+        option = CONFIG_OPTIONS.get(cmd[0])
+        controlled.append(cmd[cmd.index(option[0]) + 1] + option[1])
+      except (TypeError, ValueError, IndexError):
+        pass
+    return controlled
 
   def interrupt(self, signum, frame):
   #----------------------------------
@@ -187,6 +198,7 @@ if __name__ == '__main__':
   exitcode = 0
 
   for c in commands(open(sys.argv[cmd], 'r'), sys.argv[cmd:]):
+    print 'C:', c.controlled_files()
     exitcode = c.run()
 
   sys.exit(exitcode)
