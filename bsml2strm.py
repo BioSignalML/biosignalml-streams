@@ -1,5 +1,5 @@
 import sys
-import signal
+import signal as sighandler
 import urlparse
 import threading
 import logging
@@ -156,7 +156,7 @@ if __name__ == '__main__':
       raise NotImplementedError("Rate conversion not yet implemented")
 
   output = framestream.FrameStream(len(signals))
-  signal.signal(signal.SIGINT, interrupt)
+  sighandler.signal(sighandler.SIGINT, interrupt)
   readers = [ ]
   try:
     for n, s in enumerate(signals):
