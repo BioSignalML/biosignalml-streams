@@ -110,7 +110,7 @@ def interrupt(signum, frame):
 if __name__ == '__main__':
 #=========================
 
-  LOGFORMAT = '%(asctime)s %(levelname)8s: %(message)s'
+  LOGFORMAT = '%(asctime)s %(levelname)8s %(threadName)s: %(message)s'
   logging.basicConfig(format=LOGFORMAT)
   logging.getLogger().setLevel(logging.DEBUG)
 
