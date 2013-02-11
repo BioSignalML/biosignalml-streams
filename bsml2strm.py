@@ -1,6 +1,5 @@
 import sys
 import signal
-import shlex
 import urlparse
 import threading
 import logging
@@ -91,8 +90,6 @@ class SignalReader(threading.Thread):
 
   def run(self):
   #-------------
-    logging.debug("Starting: %d", self._channel)
-    logging.debug("Finished: %d", self._channel)
     try:
       for ts in self._signal.read(**self._options):
         if _thread_exit.is_set(): break
@@ -154,9 +151,9 @@ if __name__ == '__main__':
   logging.debug("got signals: %s", signals)
 
   rate = signals[0].rate    ############
-  for s in signals:
+  for s in signals[1:]:
     if rate != s.rate:
-      raise NotImplementedError("Rate conversion not yet implemented") 
+      raise NotImplementedError("Rate conversion not yet implemented")
 
   output = framestream.FrameStream(len(signals))
   signal.signal(signal.SIGINT, interrupt)
