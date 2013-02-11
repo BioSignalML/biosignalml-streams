@@ -99,7 +99,7 @@ class SignalReader(threading.Thread):
 
 
 def interrupt(signum, frame):
-#----------------------------
+#============================
   _thread_exit.set()
   sys.exit()
 
@@ -134,11 +134,9 @@ if __name__ == '__main__':
     except IOError:
       signals = [ repo.get_signal(rec_uri) ]
   else:
-    logging.debug("repo connect...")
     repo = Repository.connect(sig_uris[0])
     signals = [ ]
     for s in sig_uris:
-      logging.debug("get signal %s", s)
       signal = repo.get_signal(s)
       if signal.rate is None:
         raise NotImplementedError("Streaming of non-uniform signals not yet implemented") 
