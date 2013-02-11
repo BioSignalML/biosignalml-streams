@@ -76,6 +76,8 @@ def parse_segment(segment):
   pass
 
 
+_thread_exit = threading.Event()
+
 class SignalReader(threading.Thread):
 #====================================
 
@@ -90,10 +92,19 @@ class SignalReader(threading.Thread):
   def run(self):
   #-------------
     logging.debug("Starting: %d", self._channel)
-    for ts in self._signal.read(**self._options):
-      self._output.put_data(self._channel, ts.data)
-    self._output.put_data(self._channel, None)
     logging.debug("Finished: %d", self._channel)
+    try:
+      for ts in self._signal.read(**self._options):
+        if _thread_exit.is_set(): break
+        self._output.put_data(self._channel, ts.data)
+    finally:
+      self._output.put_data(self._channel, None)
+
+
+def interrupt(signum, frame):
+#----------------------------
+  _thread_exit.set()
+  sys.exit()
 
 
 if __name__ == '__main__':
@@ -148,14 +159,20 @@ if __name__ == '__main__':
       raise NotImplementedError("Rate conversion not yet implemented") 
 
   output = framestream.FrameStream(len(signals))
-  threads = [ ]
-  for n, s in enumerate(signals):
-    threads.append(SignalReader(s, output, n, interval=segment, maxpoints=BUFFER_SIZE))
-    ##units=units.units('uM')
-    threads[-1].start()
-  for f in output.frames():
-    print f
-  for t in threads:
-    t.join()
+  signal.signal(signal.SIGINT, interrupt)
+  readers = [ ]
+  try:
+    for n, s in enumerate(signals):
+      readers.append(SignalReader(s, output, n, interval=segment, maxpoints=BUFFER_SIZE))
+      ##units=units.units('uM')
+      readers[-1].start()                   # Start thread
+
+    for f in output.frames():
+      ###print f
+      pass
+
+  finally:
+    for t in readers:
+      if t.is_alive(): t.join()
 
   repo.close()
