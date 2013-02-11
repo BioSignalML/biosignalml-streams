@@ -165,8 +165,7 @@ if __name__ == '__main__':
       readers[-1].start()                   # Start thread
 
     for f in output.frames():
-      ###print f
-      pass
+      print f
 
   finally:
     for t in readers:
