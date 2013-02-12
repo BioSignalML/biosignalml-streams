@@ -98,9 +98,12 @@ def parse_dtypes(dtypes):
           raise ValueError("Invalid datatype - %s" % e)
   return result
 
+
 def parse_segment(segment):
 #==========================
-  if ':' in segment:
+  if segment in [None, '']:
+    return
+  elif ':' in segment:
     return [ float(t) for t in segment.split(':') ]
   elif '-' in segment:
     t = [ float(t) for t in segment.split('-') ]
