@@ -42,6 +42,8 @@ Options:
 
               Default is to use the signal files's native datatype.
 
+  --no-metadata                  Don't add a metadata channel.
+
   -s SEGMENT --segment=SEGMENT   Temporal segment of recording to stream.
   
               SEGMENT is either "start-end" or "start:duration", with times being
@@ -186,7 +188,7 @@ if __name__ == '__main__':
     if rate != s.rate:
       raise NotImplementedError("Rate conversion not yet implemented")
 
-  output = framestream.FrameStream(len(signals))
+  output = framestream.FrameStream(len(signals), args['--no-metadata'])
   sighandler.signal(sighandler.SIGINT, interrupt)
   readers = [ ]
   try:

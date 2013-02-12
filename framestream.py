@@ -63,10 +63,10 @@ class TextBuffer(object):
 class FrameStream(object):
 #=========================
 
-  def __init__(self, channels):
-  #----------------------------
+  def __init__(self, channels, no_text=False):
+  #-------------------------------------------
     self._databuf = [ DataBuffer() for n in xrange(channels) ]
-    self._textbuf = TextBuffer()
+    self._textbuf = None if no_text else TextBuffer()
 
   def put_data(self, channel, data):
   #---------------------------------
@@ -74,14 +74,18 @@ class FrameStream(object):
 
   def put_text(self, text):
   #------------------------
-    self._textbuf.put(text)
+    if self._textbuf is not None:
+      self._textbuf.put(text)
 
   def frames(self):
   #----------------
     framecount = 0
     try:
       while True:
-        line = [ str(framecount) ] + [ b.next() for b in self._databuf ] + [ self._textbuf.next() ]
+        if self._textbuf is not None:
+          line = [ str(framecount) ] + [ b.next() for b in self._databuf ] + [ self._textbuf.next() ]
+        else:
+          line = [ str(framecount) ] + [ b.next() for b in self._databuf ]
         yield ' '.join(line)
         framecount += 1
     except StopIteration:
