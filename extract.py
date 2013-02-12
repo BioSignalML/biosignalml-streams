@@ -13,6 +13,7 @@ import biosignalml.units as units
 URI_PREFIX   = "http://devel.biosignalml.org/fph/icon/"
 DATA_PREFIX  = "/recordings/fph/icon/"
 
+
 def get_time(ts):
 #================
   buf = buffer(ts)
@@ -36,9 +37,12 @@ def good_block(b):
   return b[103:105] == '\xFF\xFF'
 
 
-def convert(fn):
-#===============
+def convert(fn, replace=False):
+#==============================
 
+  print "Converting ", fn
+
+  fn = os.path.abspath(fn)
   f = open(fn, mode='r')
   buf = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
   hdr = buf[:512]
@@ -61,16 +65,26 @@ def convert(fn):
       error = "Short first block"
       timestamp = get_time(buf[512:516])
       pos = buf.find('\xFF\xFF') + 2
-  uri = URI_PREFIX + str(header[3]) + '/' + str(header[2])[:-4]
-  datapath = DATA_PREFIX + str(header[3])
+  serialno = header[3]
+  fileid = header[2].rsplit('.', 1)[0]
+
+  # ./FlowData/NZ_Patients/30_Day_Data/07124524/FLW0003.FPH
+  filepath = fn.rsplit('/FlowData/', 1)[1].rsplit('/', 1)[0].replace(' ', '_')
+  p = filepath.split('/')
+  region = p[0]
+  trial = p[1]
+
+  datapath = DATA_PREFIX + filepath
+  dataset = 'file://' + datapath + '/' + fileid + '.h5'
+  uri = URI_PREFIX + filepath + '/' + fileid
+
   try:
     os.makedirs(datapath, 0755)
   except OSError:
     if os.path.isdir(datapath): pass
     else: raise # Directory creation error
-  dataset = 'file://' + datapath + '/' + str(header[2])[:-4] + '.h5'
-  h5 = HDF5Recording.create(uri, dataset,
-         starttime=timestamp, source='file://' + os.path.abspath(fn))
+  h5 = HDF5Recording.create(uri, dataset, replace=replace,
+         starttime=timestamp, source='file://' + fn)
 
   if error: h5.associate(model.Annotation.Note(h5.uri.make_uri(), h5.uri,
                  error, tags=[BSML.ErrorTAG],
@@ -85,27 +99,27 @@ def convert(fn):
 
   ## Also device model, firmware rev, serial number, etc...
   ## Also study details (from filename path...)
-  flow = h5.new_signal(None, units=units.to_UNITS('lpm'),
+  flow = h5.new_signal(None, units=units.get_units_uri('lpm'),
     id=0, rate=50, label='Flow', dtype='f4')
-  pressure = h5.new_signal(None, units=units.to_UNITS('cmH2O'),
-    id=1, rate=1,  label='CPAP Pessure', dtype='f4')
-  leak = h5.new_signal(None, units=units.to_UNITS('lpm'),
+  pressure = h5.new_signal(None, units=units.get_units_uri('cmH2O'),
+    id=1, rate=1,  label='CPAP Pressure', dtype='f4')
+  leak = h5.new_signal(None, units=units.get_units_uri('lpm'),
     id=2, rate=1,  label='Leak', dtype='f4')
+  fdata = []
   pdata = []
   ldata = []
   duration = 0
   while buf[pos:pos+4] != '\xFF\x7F\x00\x00':
     rec = buffer(buf[pos:pos+105])
     duration += 1
-    fdata = []
     for i in xrange(50):
       fdata.append(struct.unpack_from('<h', rec, 2*i)[0]/100.0)
-    flow.append(UniformTimeSeries(fdata, rate=50))
     pdata.append(struct.unpack_from('<h', rec, 100)[0]/100.0)
     ldata.append(struct.unpack_from('B', rec, 102)[0]/100.0)
     if rec[103:105] != '\xFF\xFF':
       raise Exception("Remainder of file has a short block")
     pos += 105
+  flow.append(UniformTimeSeries(fdata, rate=50))
   pressure.append(UniformTimeSeries(pdata, rate=1))
   leak.append(UniformTimeSeries(ldata, rate=1))
   h5.duration = duration
@@ -121,12 +135,14 @@ if __name__ == '__main__':
 
   import sys
 
+# Use argparse to add an --overwrite parameter...
+
 #  fn = 'FlowData/US_Patients/7Day/07167919/FLW0003.FPH'
   if len(sys.argv) < 2:
     print 'Usage: %s file(s)' % sys.argv[0]
     sys.exit(1)
 
   for f in sys.argv[1:]:
-    try: convert(f)      # One block == one second
+    try: convert(f, True)      # One block == one second
     except Exception, msg:
       print '%s: %s' % (f, msg)
