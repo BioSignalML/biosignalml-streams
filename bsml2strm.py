@@ -2,11 +2,13 @@ import sys
 import signal as sighandler
 import urlparse
 import threading
+import numpy as np
 import logging
 
 import docopt
 
 from biosignalml.client import Repository
+from biosignalml.units import get_units_uri
 
 import framestream
 
@@ -16,7 +18,7 @@ BUFFER_SIZE = 10000
 
 
 usage = """Usage:
-  %(prog)s [options] [-u UNITS --units=UNITS] RATE (RECORDING_URI | SIGNAL_URI ...)
+  %(prog)s [options] [-d TYPES --dtypes TYPES] [-u UNITS --units=UNITS] RATE (RECORDING_URI | SIGNAL_URI ...)
   %(prog)s (-h | --help)
 
 Stream signals at the given RATE. Channel order is that of the given URIs.
@@ -30,6 +32,16 @@ Options:
 
   -b BASE --base=BASE            Base prefix for URIs
 
+  -d TYPES --dtypes TYPES        A comma or space separated list of "N=type"
+              entries, where "N" is the 0-origin channel number and "type" is
+              a string, in NumPy's array protocol format, giving the numeric
+              type channel data will be streamed from the host as. (The first
+              character specifies the kind of data (e.g. 'i' = integer, 'f' =
+              float) and the remaining characters specify how many bytes of data.
+              See: http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html).
+
+              Default is to use the signal files's native datatype.
+
   -s SEGMENT --segment=SEGMENT   Temporal segment of recording to stream.
   
               SEGMENT is either "start-end" or "start:duration", with times being
@@ -41,7 +53,7 @@ Options:
   -u UNITS --units=UNITS         Required units for data channels.
   
               UNITS is either a comma (or space) separated list of "N=unit"
-              entries, where "N" is the 1-origin channel number and "unit" is
+              entries, where "N" is the 0-origin channel number and "unit" is
               either an abbreviation for a unit, a QNAME (i.e. prefix:name), or
               a full URI enclosed in angle brackets;
 
@@ -64,11 +76,25 @@ def parse_units(units):
         for t in s.split(','):  # and reduce(), but this is clearer...
           l = t.split('=', 1)
           try:
-            result[int(l[0])] = l[1]
-          except IndexError, ValueError:
-            raise ValueError("Invalid units specification")
+            result[int(l[0])] = get_units_uri(l[1].strip())
+          except (IndexError, ValueError) as e:
+            raise ValueError("Invalid units specification - %s" % e)
   return result
 
+
+def parse_dtypes(dtypes):
+#========================
+  result = { }
+  for d in dtypes:
+    for s in d.split():       # Could combine using list comprehension
+      for t in s.split(','):  # and reduce(), but this is clearer...
+        l = t.split('=', 1)
+        print t, l
+        try:
+          result[int(l[0])] = np.dtype(l[1].strip()).str
+        except (IndexError, ValueError, TypeError) as e:
+          raise ValueError("Invalid datatype - %s" % e)
+  return result
 
 def parse_segment(segment):
 #==========================
@@ -121,6 +147,7 @@ if __name__ == '__main__':
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
   rate = float(args['RATE'])
   units = parse_units(args['--units'])
+  dtypes = parse_dtypes(args['--dtypes'])
   segment = parse_segment(args['--segment'])
   base = args['--base']
   rec_uri = add_base(base, args['RECORDING_URI'])
@@ -158,8 +185,8 @@ if __name__ == '__main__':
   readers = [ ]
   try:
     for n, s in enumerate(signals):
-      readers.append(SignalReader(s, output, n, interval=segment, maxpoints=BUFFER_SIZE))
-      ##units=units.units('uM')
+      readers.append(SignalReader(s, output, n, units=units.get(n), dtype=dtypes.get(n),
+                                  interval=segment, maxpoints=BUFFER_SIZE))
       readers[-1].start()                   # Start thread
 
     for f in output.frames():
