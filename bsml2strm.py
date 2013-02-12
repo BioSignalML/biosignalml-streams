@@ -98,7 +98,13 @@ def parse_dtypes(dtypes):
 
 def parse_segment(segment):
 #==========================
-  pass
+  if ':' in segment:
+    return [ float(t) for t in segment.split(':') ]
+  elif '-' in segment:
+    t = [ float(t) for t in segment.split('-') ]
+    return ( t[0], t[1] - t[0] )
+  elif segment:
+    raise ValueError("Invalid segment specification")
 
 
 _thread_exit = threading.Event()
