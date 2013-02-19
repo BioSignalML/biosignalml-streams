@@ -3,6 +3,7 @@ import signal as sighandler
 import urlparse
 import threading
 import numpy as np
+import pyparsing as pp
 import logging
 
 import docopt
@@ -32,7 +33,7 @@ Options:
 
   -b BASE --base=BASE            Base prefix for URIs
 
-  -d TYPES --dtypes TYPES        A comma or space separated list of "N=type"
+  -d TYPES --dtypes TYPES        A comma separated list of "N:type"
               entries, where "N" is the 0-origin channel number and "type" is
               a string, in NumPy's array protocol format, giving the numeric
               type channel data will be streamed from the host as. (The first
@@ -40,7 +41,11 @@ Options:
               float) and the remaining characters specify how many bytes of data.
               See: http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html).
 
-              Default is to use the signal files's native datatype.
+              A default setting (for all channels) can be given by an entry
+              which has no channel number (i.e. without the "N:" prefix).
+
+              If no datatyps are specified the signal files's native datatype
+              is used.
 
   --no-metadata                  Don't add a metadata channel.
 
@@ -52,19 +57,28 @@ Options:
               a missing end time means the recording's end; and a missing duration
               means until the recording's end.
 
-  -u UNITS --units=UNITS         Required units for data channels.
-  
-              UNITS is either a comma (or space) separated list of "N=unit"
+  -u UNITS --units=UNITS         A comma separated list of "N:unit"
               entries, where "N" is the 0-origin channel number and "unit" is
               either an abbreviation for a unit, a QNAME (i.e. prefix:name), or
               a full URI enclosed in angle brackets;
 
               or UNITS is in the form "@file", where the named "file" contains
-              unit specifications as a comma, space, or line separated list.
+              unit specifications as a comma and/or line separated list.
 
               When specified, units are checked and, if possible, data is converted.
 
+              A default setting (for all channels) can be given by an entry
+              which has no channel number (i.e. without the "N:" prefix).
+
 """
+
+
+## PyParsing grammer for option value lists.
+opt_value = pp.CharsNotIn(' ,')
+opt_channel = pp.Word(pp.nums).setParseAction(lambda s,l,t: [int(t[0])])
+opt_chanvalue = pp.Group(pp.Optional(opt_channel + pp.Suppress(':'), default=-1) + opt_value)
+opt_valuelist = pp.delimitedList(opt_chanvalue, delim=',')
+
 
 def parse_units(units):
 #======================
@@ -74,15 +88,13 @@ def parse_units(units):
       with open(u[1:]) as file:
         result.update(parse_units(file.read().split()))
     else:
-      for s in u.split():       # Could combine using list comprehension
-        for t in s.split(','):  # and reduce(), but this is clearer...
-          l = t.split('=', 1)
-          try:
-            uri = l[1].strip()
-            if uri.startswith('http://'): result[int(l[0])] = uri
-            else:                         result[int(l[0])] = get_units_uri(uri)
-          except (IndexError, ValueError) as e:
-            raise ValueError("Invalid units specification - %s" % e)
+      for l in opt_valuelist.parseString(u):
+        try:
+          uri = l[1]
+          if uri.startswith('http://'): result[l[0]] = uri
+          else:                         result[l[0]] = get_units_uri(uri)
+        except ValueError as e:
+          raise ValueError("Invalid units specification - %s" % e)
   return result
 
 
@@ -90,13 +102,11 @@ def parse_dtypes(dtypes):
 #========================
   result = { }
   if dtypes is not None:
-    for d in dtypes.split():  # Could combine using list comprehension
-      for t in d.split(','):  # and reduce(), but this is clearer...
-        l = t.split('=', 1)
-        try:
-          result[int(l[0])] = np.dtype(l[1].strip()).str
-        except (IndexError, ValueError, TypeError) as e:
-          raise ValueError("Invalid datatype - %s" % e)
+    for l in opt_valuelist.parseString(dtypes):
+      try:
+        result[l[0]] = np.dtype(l[1]).str
+      except (IndexError, ValueError) as e:
+        raise ValueError("Invalid datatype - %s" % e)
   return result
 
 
@@ -200,7 +210,9 @@ if __name__ == '__main__':
   readers = [ ]
   try:
     for n, s in enumerate(signals):
-      readers.append(SignalReader(s, output, n, units=units.get(n), dtype=dtypes.get(n),
+      readers.append(SignalReader(s, output, n,
+                                  units=units.get(n, units.get(-1)),
+                                  dtype=dtypes.get(n, dtypes.get(-1)),
                                   interval=segment, maxpoints=BUFFER_SIZE))
       readers[-1].start()                   # Start thread
 
