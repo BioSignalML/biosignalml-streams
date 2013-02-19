@@ -18,7 +18,7 @@ BUFFER_SIZE = 10000
 
 
 usage = """Usage:
-  %(prog)s [options] [-d TYPES --dtypes TYPES] [-u UNITS --units=UNITS] RATE (RECORDING_URI | SIGNAL_URI ...)
+  %(prog)s [options] [-u UNITS --units=UNITS] RATE (RECORDING_URI | SIGNAL_URI ...)
   %(prog)s (-h | --help)
 
 Stream signals at the given RATE. Channel order is that of the given URIs.
@@ -87,11 +87,10 @@ def parse_units(units):
 def parse_dtypes(dtypes):
 #========================
   result = { }
-  for d in dtypes:
-    for s in d.split():       # Could combine using list comprehension
-      for t in s.split(','):  # and reduce(), but this is clearer...
+  if dtypes is not None:
+    for d in dtypes.split():  # Could combine using list comprehension
+      for t in d.split(','):  # and reduce(), but this is clearer...
         l = t.split('=', 1)
-        print t, l
         try:
           result[int(l[0])] = np.dtype(l[1].strip()).str
         except (IndexError, ValueError, TypeError) as e:
