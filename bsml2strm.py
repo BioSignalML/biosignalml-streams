@@ -78,7 +78,9 @@ def parse_units(units):
         for t in s.split(','):  # and reduce(), but this is clearer...
           l = t.split('=', 1)
           try:
-            result[int(l[0])] = get_units_uri(l[1].strip())
+            uri = l[1].strip()
+            if uri.startswith('http://'): result[int(l[0])] = uri
+            else:                         result[int(l[0])] = get_units_uri(uri)
           except (IndexError, ValueError) as e:
             raise ValueError("Invalid units specification - %s" % e)
   return result
