@@ -131,7 +131,10 @@ class SignalReader(threading.Thread):
     try:
       for ts in self._signal.read(**self._options):
         if _thread_exit.is_set(): break
-        self._output.put_data(self._channel, ts.data)
+        if ts.is_uniform:
+          self._output.put_data(self._channel, ts.data)
+        else:
+          self._output.put_data(self._channel, ts.points)
     finally:
       self._output.put_data(self._channel, None)
 

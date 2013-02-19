@@ -33,7 +33,9 @@ class DataBuffer(object):
       self._datalen = len(data)
       self._pos = 0
     self._pos += 1
-    return self._data[self._pos - 1]
+    d = self._data[self._pos - 1]
+    ## Data could be a 2-D (or higher?) array.
+    return d if isinstance(d, str) else ' '.join(d.flatten().tolist())
 
 
 class TextBuffer(object):
