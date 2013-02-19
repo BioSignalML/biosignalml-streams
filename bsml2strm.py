@@ -17,15 +17,15 @@ VERSION = '0.2'
 
 BUFFER_SIZE = 10000
 
+##Otherwise all URIs must be for signals from the one BioSignalML recording.
 
 usage = """Usage:
-  %(prog)s [options] [-u UNITS --units=UNITS] RATE (RECORDING_URI | SIGNAL_URI ...)
+  %(prog)s [options] [-u UNITS --units=UNITS] URI...
   %(prog)s (-h | --help)
 
 Stream signals at the given RATE. Channel order is that of the given URIs.
 
 If the URI is that of a recording then all signals in the recording are streamed.
-Otherwise all URIs must be for signals from the one BioSignalML recording.
 
 Options:
 
@@ -50,7 +50,7 @@ Options:
   --no-metadata                  Don't add a metadata channel.
 
   -s SEGMENT --segment=SEGMENT   Temporal segment of recording to stream.
-  
+
               SEGMENT is either "start-end" or "start:duration", with times being
               ISO 8601 durations (e.g. "PT1M23.5S"). Start and end times are from
               the beginning of the recording; a missing start time means "PT0S";
@@ -175,30 +175,20 @@ if __name__ == '__main__':
   dtypes = parse_dtypes(args['--dtypes'])
   segment = parse_segment(args['--segment'])
   base = args['--base']
-  rec_uri = add_base(base, args['RECORDING_URI'])
-  sig_uris = [ add_base(base, s) for s in args['SIGNAL_URI'] ]
+  uris = [ add_base(base, u) for u in args['URI'] ]
 
-  if rec_uri is not None:
-    repo = Repository.connect(rec_uri)
+
+  signals = [ ]
+  for u in uris:
+    repo = Repository.connect(u)
     try:
-      rec = repo.get_recording_with_signals(rec_uri)
-      signals = [ s for s in rec.signals() if s.rate is not None ]
+      rec = repo.get_recording_with_signals(u)
+      signals.extend([ s for s in rec.signals() if s.rate is not None ])
     except IOError:
-      signals = [ repo.get_signal(rec_uri) ]
-  else:
-    repo = Repository.connect(sig_uris[0])
-    signals = [ ]
-    for s in sig_uris:
-      signal = repo.get_signal(s)
-      if signal.rate is None:
-        raise NotImplementedError("Streaming of non-uniform signals not yet implemented") 
-      signals.append(signal)
-    rec = signals[0].recording
-    for s in signals[1:]:
-      if rec != s.recording:
-        raise ValueError("Signals are not all from the same recording")
+      signals.append(repo.get_signal(u))
+    repo.close()
 
-  logging.debug("got signals: %s", signals)
+  logging.debug("got signals: %s", [ str(s.uri) for s in signals ])
 
   rate = signals[0].rate    ############
   for s in signals[1:]:
@@ -222,5 +212,3 @@ if __name__ == '__main__':
   finally:
     for t in readers:
       if t.is_alive(): t.join()
-
-  repo.close()
