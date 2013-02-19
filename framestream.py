@@ -17,6 +17,7 @@ class DataBuffer(object):
   #------------------
     self._queue = Queue.Queue()
     self._data = [ ]
+    self._datalen = 0
     self._pos = 0
 
   def put(self, data):
@@ -25,10 +26,11 @@ class DataBuffer(object):
 
   def next(self):
   #--------------
-    while self._pos >= len(self._data):
+    while self._pos >= self._datalen:
       data = self._queue.get()
       if data is None: raise StopIteration
-      self._data = format_8g(np.asarray(data))
+      self._data = format_8g(data)
+      self._datalen = len(data)
       self._pos = 0
     self._pos += 1
     return self._data[self._pos - 1]
