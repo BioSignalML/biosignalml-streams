@@ -17,15 +17,19 @@ VERSION = '0.2'
 
 BUFFER_SIZE = 10000
 
+##Stream signals at the given RATE.
 ##Otherwise all URIs must be for signals from the one BioSignalML recording.
 
 usage = """Usage:
   %(prog)s [options] [-u UNITS --units=UNITS] URI...
   %(prog)s (-h | --help)
 
-Stream signals at the given RATE. Channel order is that of the given URIs.
+Channel order is that of the given URIs.
 
 If the URI is that of a recording then all signals in the recording are streamed.
+
+All signals MUST have the same sampling rate.
+
 
 Options:
 
@@ -128,13 +132,14 @@ _thread_exit = threading.Event()
 class SignalReader(threading.Thread):
 #====================================
 
-  def __init__(self, signal, output, channel, **options):
-  #------------------------------------------------------
+  def __init__(self, signal, output, channel, ratechecker, **options):
+  #-------------------------------------------------------------------
     threading.Thread.__init__(self)
     self._signal = signal
     self._output = output
     self._channel = channel
     self._options = options
+    self._ratechecker = ratechecker
 
   def run(self):
   #-------------
@@ -142,8 +147,10 @@ class SignalReader(threading.Thread):
       for ts in self._signal.read(**self._options):
         if _thread_exit.is_set(): break
         if ts.is_uniform:
+          self._ratechecker.check(ts.dataseries.rate)
           self._output.put_data(self._channel, ts.data)
         else:
+          self._ratechecker.check(None)
           self._output.put_data(self._channel, ts.points)
     finally:
       self._output.put_data(self._channel, None)
@@ -153,6 +160,25 @@ def interrupt(signum, frame):
 #============================
   _thread_exit.set()
   sys.exit()
+
+
+class RateChecker(object):
+#=========================
+
+  def __init__(self):
+  #------------------
+    self._lock = threading.Lock()
+    self._rate = -1
+
+  def check(self, rate):
+  #---------------------
+    if self._rate == -1:
+      self._lock.acquire()
+      self._rate = rate
+      self._lock.release()
+    elif self._rate != rate:
+      _thread_exit.set()
+      raise ValueError("Signal rates don't match")
 
 
 if __name__ == '__main__':
@@ -170,7 +196,7 @@ if __name__ == '__main__':
       return urlparse.urljoin(base, uri)
 
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
-  rate = float(args['RATE'])
+#  rate = float(args['RATE'])
   units = parse_units(args['--units'])
   dtypes = parse_dtypes(args['--dtypes'])
   segment = parse_segment(args['--segment'])
@@ -190,17 +216,19 @@ if __name__ == '__main__':
 
   logging.debug("got signals: %s", [ str(s.uri) for s in signals ])
 
-  rate = signals[0].rate    ############
-  for s in signals[1:]:
-    if rate != s.rate:
-      raise NotImplementedError("Rate conversion not yet implemented")
+#  rate = signals[0].rate    ############
+#  for s in signals[1:]:
+#    if rate != s.rate:
+#      raise NotImplementedError("Rate conversion not yet implemented")
+
 
   output = framestream.FrameStream(len(signals), args['--no-metadata'])
   sighandler.signal(sighandler.SIGINT, interrupt)
+  ratechecker = RateChecker()
   readers = [ ]
   try:
     for n, s in enumerate(signals):
-      readers.append(SignalReader(s, output, n,
+      readers.append(SignalReader(s, output, n, ratechecker,
                                   units=units.get(n, units.get(-1)),
                                   dtype=dtypes.get(n, dtypes.get(-1)),
                                   interval=segment, maxpoints=BUFFER_SIZE))
