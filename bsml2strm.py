@@ -235,7 +235,9 @@ if __name__ == '__main__':
       readers[-1].start()                   # Start thread
 
     for f in output.frames():
-      print f
+      sys.stdout.write(f)
+      sys.stdout.write('\n')
+      # Calling flush() significantly slows throughput...
 
   finally:
     for t in readers:
