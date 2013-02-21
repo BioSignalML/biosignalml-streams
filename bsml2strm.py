@@ -146,18 +146,6 @@ Options:
 
   -b BASE --base=BASE            Base prefix for URIs
 
-  -d TYPES --dtypes TYPES        A comma separated list of "N:type"
-              entries, where "N" is the 0-origin channel number and "type" is
-              a string, in NumPy's array protocol format, giving the numeric
-              type channel data will be streamed from the host as. (The first
-              character specifies the kind of data (e.g. 'i' = integer, 'f' =
-              float) and the remaining characters specify how many bytes of data.
-              See: http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html).
-
-              A default setting (for all channels) can be given by an entry
-              which has no channel number (i.e. without the "N:" prefix).
-
-              [Default: f4] (32-bit float)
 
   --no-metadata                  Don't add a metadata channel.
 
@@ -184,6 +172,20 @@ Options:
 
 """
 
+  """
+  -d TYPES --dtypes TYPES        A comma separated list of "N:type"
+              entries, where "N" is the 0-origin channel number and "type" is
+              a string, in NumPy's array protocol format, giving the numeric
+              type channel data will be streamed from the host as. (The first
+              character specifies the kind of data (e.g. 'i' = integer, 'f' =
+              float) and the remaining characters specify how many bytes of data.
+              See: http://docs.scipy.org/doc/numpy/reference/arrays.dtypes.html).
+
+              A default setting (for all channels) can be given by an entry
+              which has no channel number (i.e. without the "N:" prefix).
+
+              [Default: f4] (32-bit float)
+  """
 
   ## PyParsing grammer for option value lists.
   opt_value = pp.CharsNotIn(' ,')
@@ -247,7 +249,8 @@ Options:
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
 #  rate = float(args['RATE'])
   units = parse_units(args['--units'])
-  dtypes = parse_dtypes(args['--dtypes'])
+  ##dtypes = parse_dtypes(args['--dtypes'])
+  dtypes = { -1: 'f4' }   ## Don't allow user to specify
   segment = parse_segment(args['--segment'])
   base = args['--base']
   uris = [ add_base(base, u) for u in args['URI'] ]
