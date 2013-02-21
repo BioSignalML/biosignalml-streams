@@ -1,5 +1,6 @@
 import Queue
 import collections
+import itertools
 
 import numpy as np
 
@@ -24,18 +25,19 @@ class DataBuffer(object):
   #-------------------
     self._queue.put(data)
 
-  def next(self):
-  #--------------
-    while self._pos >= self._datalen:
-      data = self._queue.get()
-      if data is None: raise StopIteration
-      self._data = format_8g(data)
-      self._datalen = len(data)
-      self._pos = 0
-    self._pos += 1
-    d = self._data[self._pos - 1]
-    ## Data could be a 2-D (or higher?) array.
-    return d if isinstance(d, str) else ' '.join(d.flatten().tolist())
+  def __iter__(self):
+  #------------------
+    while True:
+      while self._pos >= self._datalen:
+        data = self._queue.get()
+        if data is None: raise StopIteration
+        self._data = format_8g(data)
+        self._datalen = len(data)
+        self._pos = 0
+      self._pos += 1
+      d = self._data[self._pos - 1]
+      ## Data could be a 2-D (or higher?) array.
+      yield d if isinstance(d, str) else ' '.join(d.flatten().tolist())
 
 
 class TextBuffer(object):
@@ -51,17 +53,36 @@ class TextBuffer(object):
   #-------------------
     self._queue.append(text)
 
-  def next(self):
-  #--------------
-    while len(self._data) == 0:
-      if len(self._queue) == 0:
-        return BYTE_ORDER_TEXT
-      text = self._queue.popleft()
-      if text is None: raise StopIteration
-      self._data = [ '%8g' % ord(c) for c in text ]
-      self._pos = 0
-    self._pos += 1
-    return self._data[self._pos - 1]
+  def __iter__(self):
+  #------------------
+    while True:
+      d = None
+      while len(self._data) == 0:
+        if len(self._queue) == 0:
+          d = BYTE_ORDER_TEXT
+          break
+        text = self._queue.popleft()
+        if text is None: raise StopIteration
+        self._data = [ '%8g' % ord(c) for c in text ]
+        self._pos = 0
+      if d is None:
+        self._pos += 1
+        d = self._data[self._pos - 1]
+      yield d
+
+
+class FrameCounter(object):
+#==========================
+
+  def __init__(self):
+  #------------------
+    self._count = 0
+
+  def __iter__(self):
+  #------------------
+    while True:
+      yield str(self._count)
+      self._count += 1
 
 
 class FrameStream(object):
@@ -69,7 +90,7 @@ class FrameStream(object):
 
   def __init__(self, channels, no_text=False):
   #-------------------------------------------
-    self._databuf = [ DataBuffer() for n in xrange(channels) ]
+    self._databuf = tuple(DataBuffer() for n in xrange(channels))
     self._textbuf = None if no_text else TextBuffer()
 
   def put_data(self, channel, data):
@@ -83,15 +104,14 @@ class FrameStream(object):
 
   def frames(self):
   #----------------
-    framecount = 0
+    framecount = FrameCounter()
     try:
-      while True:
-        if self._textbuf is not None:
-          line = [ str(framecount) ] + [ b.next() for b in self._databuf ] + [ self._textbuf.next() ]
-        else:
-          line = [ str(framecount) ] + [ b.next() for b in self._databuf ]
-        yield ' '.join(line)
-        framecount += 1
+      if self._textbuf is not None:
+        line = itertools.izip(framecount, *(self._databuf + (self._textbuf,)))
+      else:
+        line = itertools.izip(framecount, *self._databuf)
+      for l in line:
+        yield ' '.join(l)
     except StopIteration:
       pass
 
