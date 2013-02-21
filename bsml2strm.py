@@ -72,8 +72,8 @@ class RateChecker(object):
       raise ValueError("Signal rates don't match")
 
 
-def bsml2strm(uris, units, dtypes, segment, nometadata, outfile):
-#================================================================
+def bsml2strm(uris, units, dtypes, segment, nometadata, outfile, binary=False):
+#==============================================================================
 
   signals = [ ]
   for u in uris:
@@ -92,7 +92,7 @@ def bsml2strm(uris, units, dtypes, segment, nometadata, outfile):
 #      raise NotImplementedError("Rate conversion not yet implemented")
 
 
-  output = framestream.FrameStream(len(signals), nometadata)
+  output = framestream.FrameStream(len(signals), nometadata, binary)
   sighandler.signal(sighandler.SIGINT, interrupt)
   ratechecker = RateChecker()
   readers = [ ]
@@ -106,7 +106,7 @@ def bsml2strm(uris, units, dtypes, segment, nometadata, outfile):
 
     for f in output.frames():
       outfile.write(f)
-      outfile.write('\n')
+      if not binary: outfile.write('\n')
       # Calling flush() significantly slows throughput...
 
   finally:
@@ -133,11 +133,15 @@ if __name__ == '__main__':
   %(prog)s [options] [-u UNITS --units=UNITS] URI...
   %(prog)s (-h | --help)
 
-Channel order is that of the given URIs.
-
-If the URI is that of a recording then all signals in the recording are streamed.
+Channel order is that of the given URIs. If the URI is that of a recording then all
+signals in the recording are streamed.
 
 All signals MUST have the same sampling rate.
+
+Each line in a text output stream starts with a frame number, followed by
+space-separated channel values, with the last channel being metadata. A binary
+output stream is a sequence of 32-bit floating point values, with no frame
+number.
 
 
 Options:
@@ -146,6 +150,7 @@ Options:
 
   -b BASE --base=BASE            Base prefix for URIs
 
+  --binary                       Output data as 32-bit floats.
 
   --no-metadata                  Don't add a metadata channel.
 
@@ -255,5 +260,5 @@ Options:
   base = args['--base']
   uris = [ add_base(base, u) for u in args['URI'] ]
 
-  bsml2strm(uris, units, dtypes, segment, args['--no-metadata'], sys.stdout)
+  bsml2strm(uris, units, dtypes, segment, args['--no-metadata'], sys.stdout, args['--binary'])
 
