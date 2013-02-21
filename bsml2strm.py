@@ -207,11 +207,10 @@ if __name__ == '__main__':
   signals = [ ]
   for u in uris:
     repo = Repository.connect(u)
-    try:
-      rec = repo.get_recording_with_signals(u)
-      signals.extend([ s for s in rec.signals() if s.rate is not None ])
-    except IOError:
-      signals.append(repo.get_signal(u))
+    rec = repo.get_recording_with_signals(u)
+    logging.debug("got recording: %s %s", type(rec), str(rec.uri))
+    if u == str(rec.uri): signals.extend([ s for s in rec.signals() if s.rate is not None ])
+    else:                 signals.append(repo.get_signal(u))
     repo.close()
 
   logging.debug("got signals: %s", [ str(s.uri) for s in signals ])
