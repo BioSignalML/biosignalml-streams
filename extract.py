@@ -85,6 +85,7 @@ def convert(fn, replace=False):
     else: raise # Directory creation error
   h5 = HDF5Recording.create(uri, dataset, replace=replace,
          starttime=timestamp, source='file://' + fn)
+  h5.dataset = None     ## Don't store as metadata attribute
 
   if error: h5.associate(model.Annotation.Note(h5.uri.make_uri(), h5.uri,
                  error, tags=[BSML.ErrorTAG],
