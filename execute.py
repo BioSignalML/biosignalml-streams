@@ -6,6 +6,8 @@ import git
 
 import command_processor
 
+VERSION = '0.0.1'
+
 
 class SourceRepository(object):
 #==============================
@@ -77,7 +79,12 @@ if __name__ == '__main__':
 
   ##           -v      Verbose (debug level ?)
 
+  ##                   Specify config flag for commands (other than known ones).
+  ##                   List config flags for 'known' commands.
+
   ## params are expanded in COMMAND_FILE
+
+
 
   logging.getLogger().setLevel(logging.DEBUG)
 
@@ -95,8 +102,8 @@ if __name__ == '__main__':
   repo = SourceRepository()
   if autocommit:
     changed = [f for f in controlled if repo.changed_file(f)]
-    if dryrun: print "Commit:", changed
-    else:      repo.commit(changed, comment)
+    logging.info("Committing: %s", changed)
+    if not dryrun: repo.commit(changed, comment)
   else:
     differences = { }
     untracked = [ ]
@@ -111,11 +118,13 @@ if __name__ == '__main__':
       raise KeyError("Untracked files must be added")
 
   print (repo.path(), repo.branch(), repo.revision())
+  ## Provenance includes name (__file__ ??) and version of execute.py
 
   exitcode = 0
   for c in commands:
     if dryrun:
-      print '\n| '.join([' '.join(cmds) for cmds in c._commands])
+      sys.stderr.write('\n| '.join([' '.join(cmds) for cmds in c._commands]))
+      sys.stderr.write('\n')
     else:
       exitcode = c.run()
   sys.exit(exitcode)
