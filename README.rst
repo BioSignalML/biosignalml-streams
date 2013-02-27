@@ -14,11 +14,29 @@ Utilities for Streaming BioSignalML
   Load a FLOW file into a BioSignalML repository.
 
 
-Prerequistes
-------------
+Prerequisites
+-------------
 
 pip/easy_install
 ~~~~~~~~~~~~~~~~
 
 * biosignalml >= 0.3.7
-* docopt
+* docopt >= 0.6.1
+
+
+Script Execution
+================
+
+* execute
+
+
+Prerequisites
+-------------
+
+* git
+
+
+pip/easy_install
+~~~~~~~~~~~~~~~~
+
+* gitpython
