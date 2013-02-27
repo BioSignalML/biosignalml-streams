@@ -89,9 +89,11 @@ def send_file(repo, base, fn, uid=False):
   except IOError:
     pass
   logging.info('%s --> %s', fn, uri)
+
   rec = repo.new_recording(uri, ## description=,
                            starttime=timestamp, duration=0.0,
-                           source='file://%s%s' % (platform.node(), os.path.realpath(fn)))
+                           source='file://%s%s' % (platform.node(), os.path.realpath(fn)),
+                           creator='http://devices.biosignalml.org/icon/%s' % serialno)
   if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
                  error, tags=[BSML.ErrorTAG],
                  creator='file://' + os.path.abspath(__file__)))
@@ -149,9 +151,10 @@ if __name__ == '__main__':
   import sys
 
 
-  LOGFORMAT = '%(asctime)s %(levelname)8s %(threadName)s: %(message)s'
+  LOGFORMAT = '%(asctime)s %(levelname)8s: %(message)s'
   logging.basicConfig(format=LOGFORMAT)
-  logging.getLogger().setLevel(logging.DEBUG)
+  logging.getLogger().setLevel(logging.INFO)
+  logging.info('%s: Version %s', sys.argv[0], __version__)
 
   usage = """Usage:
   %(prog)s [options] REPO FILE...
@@ -190,6 +193,6 @@ Options:
     try:
       send_file(repo, base, f, args['--uuid'])
     except Exception, msg:
-      print '%s: %s' % (f, msg)
+      logging.error('%s: %s', f, msg)
   repo.close()
 
