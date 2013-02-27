@@ -2,6 +2,7 @@ import mmap
 import struct
 import os
 import uuid
+import urllib
 import platform
 from datetime import datetime
 import logging
@@ -15,7 +16,7 @@ import biosignalml.units as units
 import biosignalml.rdf as rdf
 
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 
 def get_time(ts):
@@ -74,15 +75,22 @@ def send_file(repo, base, fn, uid=False):
 
   if uid: uri = base + '/' + str(uuid.uuid4())
   else:
-    path = os.path.splitext(fn)[0].replace(' ', '_')
-    if path[0] not in ['.', '/']: uri = base + '/' + path
-    elif path.startswith('./'):   uri = base + path[1:]
-    else:                         uri = base + os.path.abspath(path)
-    logging.debug('%s + %s (%s) --> %s', base, fn, path, uri)
+    path = os.path.splitext(fn)[0].replace(' ', '_') # Remove extension and replace ' ' with '_'
+    if path[0] not in ['.', '/']: uri = '/' + path
+    elif path.startswith('./'):   uri = path[1:]
+    else:                         uri = os.path.abspath(path)
+    if '-' in uri or uri != urllib.quote(uri):
+      raise ValueError("Invalid characters in resulting URI")
+    uri = base + uri
+  try:
+    repo.get_recording(uri)
+    # if not replacing:
+    raise ValueError("Recording `%s` already exists" % uri)
+  except IOError:
+    pass
+  logging.info('%s --> %s', fn, uri)
   rec = repo.new_recording(uri, ## description=,
                            starttime=timestamp, duration=0.0,
-
-
                            source='file://%s%s' % (platform.node(), os.path.realpath(fn)))
   if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
                  error, tags=[BSML.ErrorTAG],
@@ -113,7 +121,7 @@ def send_file(repo, base, fn, uid=False):
     pdata.append(struct.unpack_from('<h', record, 100)[0]/100.0)
     ldata.append(struct.unpack_from('B', record, 102)[0]/100.0)
     if record[103:105] != '\xFF\xFF':
-      raise Exception("Remainder of file has a short block")
+      raise ValueError("Remainder of file has a short block")
     pos += 105
 
   logging.debug("All read, starting append...")
