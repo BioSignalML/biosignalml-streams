@@ -1,28 +1,30 @@
-
-import urlparse
-import logging
-
-
 import mmap
 import struct
 import os
+import uuid
 from datetime import datetime
+import logging
+
 
 from biosignalml import BSML
-from biosignalml.formats import HDF5Recording
+from biosignalml.client import Repository
 from biosignalml.data import UniformTimeSeries
 import biosignalml.model as model
 import biosignalml.units as units
+import biosignalml.rdf as rdf
+
+
+__version__ = '0.3.0'
 
 
 def get_time(ts):
 #================
   buf = buffer(ts)
-  date = struct.unpack_from("<H", buf)[0] 
+  date = struct.unpack_from("<H", buf)[0]
   year = 2000 + (date >> 9)
   month = (date & 0x01E0) >> 5
   day = (date & 0x001F)
-  time = struct.unpack_from("<H", buf, 2)[0] 
+  time = struct.unpack_from("<H", buf, 2)[0]
   hours = time >> 11
   mins = (time & 0x07E0) >> 5
   secs = (time & 0x001F) << 1
@@ -38,14 +40,12 @@ def good_block(b):
   return b[103:105] == '\xFF\xFF'
 
 
-def save_file(repo, fn, guid=False)
-#==================================
+def send_file(repo, base, fn, uid=False):
+#========================================
 
   logging.debug("Converting %s", fn)
 
-  fn = os.path.abspath(fn)
-
-
+  fn = os.path.normpath(fn)
   f = open(fn, mode='r')
   buf = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
   hdr = buf[:512]
@@ -71,80 +71,78 @@ def save_file(repo, fn, guid=False)
   serialno = header[3]
   fileid = header[2].rsplit('.', 1)[0]
 
-  # ./FlowData/NZ_Patients/30_Day_Data/07124524/FLW0003.FPH
-  filepath = fn.rsplit('/FlowData/', 1)[1].rsplit('/', 1)[0].replace(' ', '_')
-  p = filepath.split('/')
-  region = p[0]
-  trial = p[1]
+  if uid: uri = base + '/' + str(uuid.uuid4())
+  else:
+    path = os.path.splitext(fn)[0].replace(' ', '_')
+    if path[0] not in ['.', '/']: uri = base + '/' + path
+    elif path.startswith('./'):   uri = base + path[1:]
+    else:                         uri = base + os.path.abspath(path)
+    logging.debug('%s + %s (%s) --> %s', base, fn, path, uri)
+  rec = repo.new_recording(uri, ## description=,
+                           starttime=timestamp, duration=0.0,
+                           source='file://' + os.path.realpath(fn))
 
-  datapath = DATA_PREFIX + filepath
-  dataset = 'file://' + datapath + '/' + fileid + '.h5'
-  uri = URI_PREFIX + filepath + '/' + fileid
 
-  try:
-    os.makedirs(datapath, 0755)
-  except OSError:
-    if os.path.isdir(datapath): pass
-    else: raise # Directory creation error
-  h5 = HDF5Recording.create(uri, dataset, replace=replace,
-         starttime=timestamp, source='file://' + fn)
-  h5.dataset = None     ## Don't store as metadata attribute
-
-  if error: h5.associate(model.Annotation.Note(h5.uri.make_uri(), h5.uri,
+  if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
                  error, tags=[BSML.ErrorTAG],
                  creator='file://' + os.path.abspath(__file__)))
 
-
-  # h5.annotate(error, tags=, ...)  ####
-
+  # rec.annotate(error, tags=, ...)  ####
   ## Graph is only created when getting metadata as graph...
-
   ## So core abstract object can have a list of annotations and an 'annotate' method??
 
   ## Also device model, firmware rev, serial number, etc...
-  ## Also study details (from filename path...)
-  flow = h5.new_signal(None, units=units.get_units_uri('lpm'),
+
+  flow = rec.new_signal(None, units=units.get_units_uri('lpm'),
     id=0, rate=50, label='Flow', dtype='f4')
-  pressure = h5.new_signal(None, units=units.get_units_uri('cmH2O'),
+  pressure = rec.new_signal(None, units=units.get_units_uri('cmH2O'),
     id=1, rate=1,  label='CPAP Pressure', dtype='f4')
-  leak = h5.new_signal(None, units=units.get_units_uri('lpm'),
+  leak = rec.new_signal(None, units=units.get_units_uri('lpm'),
     id=2, rate=1,  label='Leak', dtype='f4')
   fdata = []
   pdata = []
   ldata = []
   duration = 0
+  logging.debug("Reading file...")
   while buf[pos:pos+4] != '\xFF\x7F\x00\x00':
-    rec = buffer(buf[pos:pos+105])
+    record = buffer(buf[pos:pos+105])
     duration += 1
     for i in xrange(50):
-      fdata.append(struct.unpack_from('<h', rec, 2*i)[0]/100.0)
-    pdata.append(struct.unpack_from('<h', rec, 100)[0]/100.0)
-    ldata.append(struct.unpack_from('B', rec, 102)[0]/100.0)
-    if rec[103:105] != '\xFF\xFF':
+      fdata.append(struct.unpack_from('<h', record, 2*i)[0]/100.0)
+    pdata.append(struct.unpack_from('<h', record, 100)[0]/100.0)
+    ldata.append(struct.unpack_from('B', record, 102)[0]/100.0)
+    if record[103:105] != '\xFF\xFF':
       raise Exception("Remainder of file has a short block")
     pos += 105
+
+  logging.debug("All read, starting append...")
   flow.append(UniformTimeSeries(fdata, rate=50))
+  ## sent as 'f8' ??
+
+  logging.debug("Flow appended...")
   pressure.append(UniformTimeSeries(pdata, rate=1))
   leak.append(UniformTimeSeries(ldata, rate=1))
-  h5.duration = duration
-  h5.save_metadata()
-  h5.close()
+
+  logging.debug("Finishing...")
+
+  rec.duration = duration    ### Does this update metadata on server...??
+  rec.close()
 
   buf.close()
   f.close()
 
 
-
 if __name__ == '__main__':
 #=========================
 
+  import urlparse
   import docopt
   import sys
 
 
   LOGFORMAT = '%(asctime)s %(levelname)8s %(threadName)s: %(message)s'
   logging.basicConfig(format=LOGFORMAT)
-##  logging.getLogger().setLevel(logging.DEBUG)
+  logging.getLogger().setLevel(logging.DEBUG)
 
   usage = """Usage:
   %(prog)s [options] REPO FILE...
@@ -156,22 +154,33 @@ REPO is a URI, specifying both the repository and a prefix to use when
 constructing URIs for stored files (ie. Recordings).
 
 Recording URI's are formed by suffixing REPO with either a FILE path (with
-spaces replaced by underscores), or with a unique GUID string.
+spaces replaced by underscores), or with a unique UUID string.
 
 Options:
 
   -h --help     Show this text and exit.
 
-  -g --guid     Use GUID strings for file names.
-              
+  -u --uuid     Use UUID strings for file names.
+
   """
 
-  args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
+  ## As parameters....
+  # ./FlowData/NZ_Patients/30_Day_Data/07124524/FLW0003.FPH
+##  filepath = fn.rsplit('/FlowData/', 1)[1].rsplit('/', 1)[0].replace(' ', '_')
+##  p = filepath.split('/')
+##  region = p[0]
+##  trial = p[1]
 
-  repo = args['REPO']
+
+  args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
+  base = args['REPO']
+  p = urlparse.urlparse(base)
+  repo = Repository(p.scheme + '://' + p.netloc)
+  if base.endswith('/'): base = base[:-1]
   for f in args['FILE']:
     try:
-      save_file(repo, f, args['--guid'])
+      send_file(repo, base, f, args['--uuid'])
     except Exception, msg:
       print '%s: %s' % (f, msg)
+  repo.close()
 
