@@ -1,5 +1,5 @@
-Utilities for Streaming BioSignalML
-===================================
+Utilities for Streaming and Processing BioSignalML
+==================================================
 
 * bsml2strm
 
@@ -13,30 +13,20 @@ Utilities for Streaming BioSignalML
 
   Load a FLOW file into a BioSignalML repository.
 
-
-Prerequisites
--------------
-
-pip/easy_install
-~~~~~~~~~~~~~~~~
-
-* biosignalml >= 0.3.7
-* docopt >= 0.6.1
-
-
-Script Execution
-================
-
 * execute
 
+  Requires gitpython.
 
-Prerequisites
--------------
+
+Pre-requisites
+--------------
 
 * git
 
+* pip/easy_install
 
-pip/easy_install
-~~~~~~~~~~~~~~~~
+  * biosignalml >= 0.3.7
+  * docopt >= 0.6.1
+  * gitpython
 
-* gitpython
+
