@@ -2,6 +2,7 @@ import mmap
 import struct
 import os
 import uuid
+import platform
 from datetime import datetime
 import logging
 
@@ -80,9 +81,9 @@ def send_file(repo, base, fn, uid=False):
     logging.debug('%s + %s (%s) --> %s', base, fn, path, uri)
   rec = repo.new_recording(uri, ## description=,
                            starttime=timestamp, duration=0.0,
-                           source='file://' + os.path.realpath(fn))
 
 
+                           source='file://%s%s' % (platform.node(), os.path.realpath(fn)))
   if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
                  error, tags=[BSML.ErrorTAG],
                  creator='file://' + os.path.abspath(__file__)))
