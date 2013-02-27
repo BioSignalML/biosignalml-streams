@@ -60,7 +60,10 @@ import fnmatch
 import subprocess
 
 
-CONFIG_OPTIONS = { 'pertecs': ('-c', '.*') }
+CONFIG_OPTIONS = { 'pertecs': ('-c', '.*'),    #  (flag, suffix)
+##                 'cat':     (None, ''),
+##                 'tee':     (None, ''),      # Produces an output file...
+                 }
 
 
 def file_list(path):
@@ -95,6 +98,10 @@ class Command(object):
       except (TypeError, KeyError, IndexError):
         pass
     return controlled
+
+  def output_files(self):
+  #----------------------
+     return [ ]
 
   def interrupt(self, signum, frame):
   #----------------------------------
