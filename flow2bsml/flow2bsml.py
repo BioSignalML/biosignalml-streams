@@ -42,6 +42,11 @@ def good_block(b):
   return b[103:105] == '\xFF\xFF'
 
 
+class SendError(Exception):
+#==========================
+  pass
+
+
 def send_file(repo, base, fn, uid=False):
 #========================================
 
@@ -51,11 +56,11 @@ def send_file(repo, base, fn, uid=False):
   f = open(fn, mode='r')
   buf = mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ)
   hdr = buf[:512]
-  if hdr[-1] != '\x3B': raise TypeError("Bad file header")
+  if hdr[-1] != '\x3B': raise SendError("Bad file header")
   header = hdr.split('\x0D')
-  if len(header) != 7: raise TypeError("Wrong header format")
+  if len(header) != 7: raise SendError("Wrong header format")
   if   buf[512:516] == '\x00\x00\x00\x00':
-    raise Exception("File appears to be empty")
+    raise SendError("File appears to be empty")
   error = ''
   try:
     if not good_block(buf[516:]): raise ValueError("Block error")
@@ -80,12 +85,12 @@ def send_file(repo, base, fn, uid=False):
     elif path.startswith('./'):   uri = path[1:]
     else:                         uri = os.path.abspath(path)
     if '-' in uri or uri != urllib.quote(uri):
-      raise ValueError("Invalid characters in resulting URI")
+      raise SendError("Invalid characters in resulting URI")
     uri = base + uri
   try:
     repo.get_recording(uri)
     # if not replacing:
-    raise ValueError("Recording `%s` already exists" % uri)
+    raise SendError("Recording `%s` already exists" % uri)
   except IOError:
     pass
   logging.info('%s --> %s', fn, uri)
@@ -123,7 +128,7 @@ def send_file(repo, base, fn, uid=False):
     pdata.append(struct.unpack_from('<h', record, 100)[0]/100.0)
     ldata.append(struct.unpack_from('B', record, 102)[0]/100.0)
     if record[103:105] != '\xFF\xFF':
-      raise ValueError("Remainder of file has a short block")
+      raise SendError("Remainder of file has a short block")
     pos += 105
 
   logging.debug("All read, starting append...")
@@ -189,10 +194,12 @@ Options:
   p = urlparse.urlparse(base)
   repo = Repository(p.scheme + '://' + p.netloc)
   if base.endswith('/'): base = base[:-1]
-  for f in args['FILE']:
-    try:
-      send_file(repo, base, f, args['--uuid'])
-    except Exception, msg:
-      logging.error('%s: %s', f, msg)
-  repo.close()
+  try:
+    for f in args['FILE']:
+      try:
+        send_file(repo, base, f, args['--uuid'])
+      except SendError, msg:
+        logging.error('%s: %s', f, msg)
+  finally:
+    repo.close()
 
