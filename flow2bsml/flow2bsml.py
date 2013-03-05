@@ -151,7 +151,6 @@ def send_file(repo, base, fn, uid=False):
 if __name__ == '__main__':
 #=========================
 
-  import urlparse
   import docopt
   import sys
 
@@ -191,8 +190,7 @@ Options:
 
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
   base = args['REPO']
-  p = urlparse.urlparse(base)
-  repo = Repository(p.scheme + '://' + p.netloc)
+  repo = Repository(base)
   if base.endswith('/'): base = base[:-1]
   try:
     for f in args['FILE']:
