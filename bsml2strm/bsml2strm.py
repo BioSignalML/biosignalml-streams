@@ -77,7 +77,7 @@ def bsml2strm(uris, units, dtypes, segment, nometadata, outfile, binary=False):
 
   signals = [ ]
   for u in uris:
-    repo = Repository.connect(u)
+    repo = Repository(u)
     rec = repo.get_recording(u)
     logging.debug("got recording: %s %s", type(rec), str(rec.uri))
     if u == str(rec.uri): signals.extend([ s for s in rec.signals() if s.rate is not None ])
