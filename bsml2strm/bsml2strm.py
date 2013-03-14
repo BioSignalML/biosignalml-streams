@@ -8,7 +8,7 @@ from biosignalml.units import get_units_uri
 
 import framestream
 
-VERSION = '0.3.1'
+VERSION = '0.4.0'
 
 BUFFER_SIZE = 10000
 
@@ -37,7 +37,7 @@ class SignalReader(threading.Thread):
       for ts in self._signal.read(**self._options):
         if _thread_exit.is_set(): break
         if ts.is_uniform:
-          self._ratechecker.check(ts.dataseries.rate)
+          self._ratechecker.check(ts.rate)
           self._output.put_data(self._channel, ts.data)
         else:
           self._ratechecker.check(None)
@@ -72,8 +72,8 @@ class RateChecker(object):
       raise ValueError("Signal rates don't match")
 
 
-def bsml2strm(uris, units, dtypes, segment, nometadata, outfile, binary=False):
-#==============================================================================
+def bsml2strm(uris, units, rate, dtypes, segment, nometadata, outfile, binary=False):
+#====================================================================================
 
   signals = [ ]
   for u in uris:
@@ -99,6 +99,7 @@ def bsml2strm(uris, units, dtypes, segment, nometadata, outfile, binary=False):
   try:
     for n, s in enumerate(signals):
       readers.append(SignalReader(s, output, n, ratechecker,
+                                  rate=rate,
                                   units=units.get(n, units.get(-1)),
                                   dtype=dtypes.get(n, dtypes.get(-1)),
                                   interval=segment, maxpoints=BUFFER_SIZE))
@@ -154,6 +155,8 @@ Options:
 
   --no-metadata                  Don't add a metadata channel.
 
+  -r RATE --rate RATE            Stream signals at the given RATE.
+
   -s SEGMENT --segment=SEGMENT   Temporal segment of recording to stream.
 
               SEGMENT is either "start-end" or "start:duration", with times being
@@ -197,6 +200,14 @@ Options:
   opt_channel = pp.Word(pp.nums).setParseAction(lambda s,l,t: [int(t[0])])
   opt_chanvalue = pp.Group(pp.Optional(opt_channel + pp.Suppress(':'), default=-1) + opt_value)
   opt_valuelist = pp.delimitedList(opt_chanvalue, delim=',')
+
+  def parse_rate(rate):
+  #====================
+    if rate in [None, '']: return
+    try:
+      return float(rate)
+    except ValueError:
+      raise ValueError("Invalid rate")
 
   def parse_units(units):
   #======================
@@ -260,5 +271,8 @@ Options:
   base = args['--base']
   uris = [ add_base(base, u) for u in args['URI'] ]
 
-  bsml2strm(uris, units, dtypes, segment, args['--no-metadata'], sys.stdout, args['--binary'])
-
+  try:
+    bsml2strm(uris, units, parse_rate(args['--rate']), dtypes, segment,
+                    args['--no-metadata'], sys.stdout, args['--binary'])
+  except Exception, msg:
+    sys.exit(msg)
