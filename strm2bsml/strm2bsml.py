@@ -1,4 +1,3 @@
-import urlparse
 import numpy as np
 
 from biosignalml.client import Repository
@@ -61,7 +60,7 @@ if __name__ == '__main__':
           u = args[n+1]
           n += 2
         if u is not None and not u.startswith('http:'):
-          unit = units.units(u)
+          unit = units.get_units_uri(u)
           if unit is None: error_exit('Unknown units: %s' % u)
           unit = str(unit)
         else:
@@ -77,17 +76,12 @@ if __name__ == '__main__':
 
   args = parse_args(sys.argv)
 
-  rec_uri = args['recording']
+  uri = args['recording']
   rate = args['rate']
   signals = args['signals']
 
-  p = urlparse.urlparse(rec_uri)
-  rep_uri = p.scheme + '://' + p.netloc
-
-##  print rep_uri, rec_uri, rate, sig_details  ######
-
-  repo = Repository(rep_uri)
-  rec = repo.new_recording(rec_uri)  ##, description=, )
+  repo = Repository(uri)
+  rec = repo.new_recording(uri)  ##, description=, )
   signals = [ ]
   for n, s in enumerate(args['signals']):
     signals.append(rec.new_signal(None, s[1], id=s[2], rate=rate))
