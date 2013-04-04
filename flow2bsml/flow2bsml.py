@@ -47,8 +47,8 @@ class SendError(Exception):
   pass
 
 
-def send_file(repo, base, fn, uid=False):
-#========================================
+def send_file(repo, base, fn, uid=False, replace=False):
+#=======================================================
 
   logging.debug("Converting %s", fn)
 
@@ -89,14 +89,14 @@ def send_file(repo, base, fn, uid=False):
     uri = base + uri
   try:
     repo.get_recording(uri)
-    # if not replacing:
-    raise SendError("Recording `%s` already exists" % uri)
+    if not replace:
+      raise SendError("Recording `%s` already exists" % uri)
   except IOError:
     pass
   logging.info('%s --> %s', fn, uri)
 
   rec = repo.new_recording(uri, ## description=,
-                           starttime=timestamp, duration=0.0,
+                           starttime=timestamp,
                            source='file://%s%s' % (platform.node(), os.path.realpath(fn)),
                            creator='http://devices.biosignalml.org/icon/%s' % serialno)
   if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
@@ -142,7 +142,7 @@ def send_file(repo, base, fn, uid=False):
   logging.debug("Finishing...")
 
   rec.duration = duration    ### Does this update metadata on server...??
-  rec.close()
+  rec.close()                ### Does so when recording closed
 
   buf.close()
   f.close()
@@ -176,6 +176,10 @@ Options:
 
   -h --help     Show this text and exit.
 
+  --debug       Enable debug output.
+
+  --replace     Overwrite existing recordings in the repository.
+
   -u --uuid     Use UUID strings for file names.
 
   """
@@ -189,13 +193,14 @@ Options:
 
 
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
+  if args['--debug']: logging.getLogger().setLevel(logging.DEBUG)
   base = args['REPO']
   repo = Repository(base)
   if base.endswith('/'): base = base[:-1]
   try:
     for f in args['FILE']:
       try:
-        send_file(repo, base, f, args['--uuid'])
+        send_file(repo, base, f, args['--uuid'], args['--replace'])
       except SendError, msg:
         logging.error('%s: %s', f, msg)
   finally:
