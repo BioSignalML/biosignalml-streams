@@ -68,6 +68,7 @@ class RateChecker(object):
       self._rate = rate
       self._lock.release()
     elif self._rate != rate:
+      logging.debug("%s != %s", self._rate, rate)
       _thread_exit.set()
       raise ValueError("Signal rates don't match")
 
@@ -123,12 +124,8 @@ if __name__ == '__main__':
   import pyparsing as pp
   import numpy as np
 
-
   LOGFORMAT = '%(asctime)s %(levelname)8s %(threadName)s: %(message)s'
   logging.basicConfig(format=LOGFORMAT)
-##  logging.getLogger().setLevel(logging.DEBUG)
-  logging.debug("Starting...")
-
 
   usage = """Usage:
   %(prog)s [options] [-u UNITS --units=UNITS] URI...
@@ -153,7 +150,9 @@ Options:
 
   --binary                       Output data as 32-bit floats.
 
-  --no-metadata                  Don't add a metadata channel.
+  --debug                        Enable debug output.
+
+  --metadata                     Add a metadata channel (under development).
 
   -r RATE --rate RATE            Stream signals at the given RATE.
 
@@ -242,14 +241,10 @@ Options:
     if segment in [None, '']:
       return
     elif ':' in segment:
-
       ## ISO durations.... OR seconds...
-
       return [ float(t) for t in segment.split(':') ]
     elif '-' in segment:
-
       t = [ float(t) for t in segment.split('-') ]
-
       return ( t[0], t[1] - t[0] )
     elif segment:
       raise ValueError("Invalid segment specification")
@@ -263,6 +258,7 @@ Options:
 
 
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
+  if args['--debug']: logging.getLogger().setLevel(logging.DEBUG)
 #  rate = float(args['RATE'])
   units = parse_units(args['--units'])
   ##dtypes = parse_dtypes(args['--dtypes'])
@@ -273,6 +269,6 @@ Options:
 
   try:
     bsml2strm(uris, units, parse_rate(args['--rate']), dtypes, segment,
-                    args['--no-metadata'], sys.stdout, args['--binary'])
+                    not args['--metadata'], sys.stdout, args['--binary'])
   except Exception, msg:
     sys.exit(msg)
