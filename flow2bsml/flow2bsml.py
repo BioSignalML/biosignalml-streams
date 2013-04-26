@@ -99,7 +99,7 @@ def send_file(repo, base, fn, uid=False, replace=False):
                            starttime=timestamp,
                            source='file://%s%s' % (platform.node(), os.path.realpath(fn)),
                            creator='http://devices.biosignalml.org/icon/%s' % serialno)
-  if error: rec.associate(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
+  if error: rec.add_resource(model.Annotation.Note(rec.uri.make_uri(), rec.uri,
                  error, tags=[BSML.ErrorTAG],
                  creator='file://' + os.path.abspath(__file__)))
 
