@@ -239,7 +239,7 @@ Options:
   def parse_segment(segment):
   #==========================
     if segment in [None, '']:
-      return
+      return None
     elif ':' in segment:
       ## ISO durations.... OR seconds...
       return [ float(t) for t in segment.split(':') ]
