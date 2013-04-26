@@ -159,10 +159,10 @@ Options:
   -s SEGMENT --segment=SEGMENT   Temporal segment of recording to stream.
 
               SEGMENT is either "start-end" or "start:duration", with times being
-              ISO 8601 durations (e.g. "PT1M23.5S"). Start and end times are from
-              the beginning of the recording; a missing start time means "PT0S";
-              a missing end time means the recording's end; and a missing duration
-              means until the recording's end.
+              in seconds. Start and end times are from the beginning of the
+              recording; a missing start time means the recording's start; a missing
+              end time means the recording's end; and a missing duration means until
+              the recording's end.
 
   -u UNITS --units=UNITS         A comma separated list of "N:unit"
               entries, where "N" is the 0-origin channel number and "unit" is
