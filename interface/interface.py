@@ -4,6 +4,7 @@ import select
 import logging
 import urlparse
 import multiprocessing
+import multiprocessing.sharedctypes
 import signal as sighandler
 
 from biosignalml.client import Repository
@@ -25,6 +26,36 @@ _interrupted = multiprocessing.Event()
 def interrupt(signum, frame):
 #============================
   _interrupted.set()
+
+
+class SynchroniseCondition(object):
+#==================================
+
+  def __init__(self):
+  #------------------
+    self._condition = multiprocessing.Condition()
+    self._count = multiprocessing.sharedctypes.Value('i', 0)
+
+  def add_waiter(self):
+  #--------------------
+    self._condition.acquire()
+    self._count.value += 1
+#    logging.debug('Waiters: %d', self._count.value)
+    self._condition.release()
+
+  def wait_for_everyone(self):
+  #---------------------------
+    self._condition.acquire()
+    if self._count.value > 0: self._count.value -= 1
+#    logging.debug('Waiting: %d', self._count.value)
+    self._condition.notify_all()
+    while self._count.value > 0:
+      self._condition.wait()
+#    logging.debug('Running: %d', self._count.value)
+    self._condition.release()
+
+
+_sender_lock = SynchroniseCondition()
 
 
 class SignalReader(multiprocessing.Process):
@@ -132,7 +163,11 @@ class OutputStream(multiprocessing.Process):
                                   interval=self._segment, maxpoints=BUFFER_SIZE))
     try:
       for r in readers: r.start()
+      starting = True
       for frame in output.frames():
+        if starting:
+          _sender_lock.wait_for_everyone()
+          starting = False
         if _interrupted.is_set(): break
         send_data(fd, frame)
         if not self._binary: send_data(fd, '\n')
@@ -274,7 +309,7 @@ def stream_data(connections):
         if len(sig) > 1 and sig[1][0] == 'units':
           units[n] = get_units(sig[1][1])
       streams.append(OutputStream(recording, signals, units, rate, dtypes, segment, not metadata, pipe, binary))
-
+      _sender_lock.add_waiter()
     elif defn[0] == 'recording':
       recording = defn[1][0][1:-1]
       base = recording + '/'
