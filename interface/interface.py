@@ -105,32 +105,48 @@ class OutputStream(Process):
 
   def run(self):
   #-------------
+
+    def send_data(fd, data):
+    #-----------------------
+      pos = 0
+      while pos < len(data):
+        ready = select.select([], [fd], [fd], 0.5)
+        if   len(ready[1]) == 0: continue
+        elif len(ready[2]) > 0:
+          raise IOError("Unexpected WRITE event")
+        os.write(fd, data[pos:pos+select.PIPE_BUF])
+        pos += select.PIPE_BUF
+
     output = framestream.FrameStream(len(self._signals), self._nometadata, self._binary)
     ratechecker = RateChecker(self._rate)
     readers = [ ]
-    outfile = sys.stdout if pipe == 'stdout' else open(pipe, 'w+b')
-    fifo = (outfile != sys.stdout)
+    if pipe == 'stdout':
+      fd = sys.stdout.fileno()
+      fifo = False
+    else:
+      fd = os.open(self._pipe, os.O_WRONLY | os.O_NONBLOCK)
+      fifo = True
+    for n, s in enumerate(self._signals):
+      readers.append(SignalReader(s, output, n, ratechecker,
+                                  rate=self._rate,
+                                  units=self._units.get(n, self._units.get(-1)),
+                                  dtype=self._dtypes.get(n, self._dtypes.get(-1)),
+                                  interval=self._segment, maxpoints=BUFFER_SIZE))
     try:
-      for n, s in enumerate(self._signals):
-        readers.append(SignalReader(s, output, n, ratechecker,
-                                    rate=self._rate,
-                                    units=self._units.get(n, self._units.get(-1)),
-                                    dtype=self._dtypes.get(n, self._dtypes.get(-1)),
-                                    interval=self._segment, maxpoints=BUFFER_SIZE))
-        readers[-1].start()                   # Start process
-      for f in output.frames():
+      for r in readers: r.start()
+      for frame in output.frames():
         if _interrupted.is_set(): break
-        outfile.write(f)
-        if not self._binary: outfile.write('\n')
-        if fifo: outfile.flush()
+        send_data(fd, frame)
+        if not self._binary: send_data(fd, '\n')
+        os.fsync(fd)   ## Does this slowdown stdout ??
     except Exception, err:
       logging.debug("ERROR: %s", err)
     finally:
       logging.debug("Finishing...")
-      for t in readers:
-        if t.is_alive(): t.terminate()
+      for r in readers:
+        if r.is_alive(): r.terminate()
       if fifo:
-        outfile.close()
+        os.close(fd)
         logging.debug("Closed output pipe...")
 
 
