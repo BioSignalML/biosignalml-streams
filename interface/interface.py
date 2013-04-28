@@ -2,6 +2,7 @@ import os, sys
 import errno
 import select
 import logging
+import urlparse
 import multiprocessing
 from multiprocessing import Process, Event, Lock
 import signal as sighandler
@@ -120,7 +121,7 @@ class OutputStream(Process):
     output = framestream.FrameStream(len(self._signals), self._nometadata, self._binary)
     ratechecker = RateChecker(self._rate)
     readers = [ ]
-    if pipe == 'stdout':
+    if self._pipe == 'stdout':
       fd = sys.stdout.fileno()
       fifo = False
     else:
@@ -191,7 +192,6 @@ class InputStream(Process):
     if self._pipe == 'stdin':
       fd = sys.stdin.fileno()
     else:
-      #fd = os.open(self._pipe, os.O_RDWR)
       fd = os.open(self._pipe, os.O_RDONLY | os.O_NONBLOCK)
 
 #    for l in self._infile:      ### Binary.... ???
@@ -223,22 +223,8 @@ class InputStream(Process):
     self._repo.close()
 
 
-if __name__ == '__main__':
-#=========================
-
-  import urlparse
-
-
-  multiprocessing.freeze_support()
-  # We lock up with ^C interrupt unless multiprocessing has a logger
-  logger = multiprocessing.log_to_stderr()
-  logger.setLevel(logging.ERROR)
-
-  LOGFORMAT = '%(asctime)s %(levelname)8s %(processName)s: %(message)s'
-  logging.basicConfig(format=LOGFORMAT)
-  #if args['--debug']: 
-  logging.getLogger().setLevel(logging.DEBUG)
-
+def stream_data(connections):
+#============================
 
   def get_units(units):
   #--------------------
@@ -258,6 +244,82 @@ if __name__ == '__main__':
       if times[1] >= times[0]: raise ValueError("Duration can't be negative")
       return [ times[0], times[1] - times[0] ]
 
+  def create_pipe(name):
+  #---------------------
+    if name in ['stdin', 'stdout']:
+      return name
+    pipe = os.path.abspath(name)
+    try:
+      os.makedirs(os.path.dirname(pipe))
+      os.mkfifo(pipe, 0600)
+    except OSError, e:
+      if e.errno == errno.EEXIST: pass
+      else: raise
+    return pipe
+
+
+  streams = [ ]
+  dtypes = { -1: 'f4' }   ## Don't allow user to specify
+
+  for defn in language.parse(testdef):
+
+    if   defn[0] == 'stream':
+      recording = defn[1][0][1:-1]
+      base = recording + '/'
+      pipe = create_pipe(defn[1][1])
+      options = dict(defn[1][2:])
+      rate = options.get('rate', None)
+      units = { -1: get_units(options.get('units', None)) }
+      segment = get_interval(options.get('segment', None))
+      metadata = options.get('metadata', False)
+      binary = options.get('binary', False)
+      signals = [ ]
+      for n, sig in enumerate(defn[2]):
+        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
+        if len(sig) > 1 and sig[1][0] == 'units':
+          units[n] = get_units(sig[1][1])
+      streams.append(OutputStream(recording, signals, units, rate, dtypes, segment, not metadata, pipe, binary))
+
+    elif defn[0] == 'recording':
+      recording = defn[1][0][1:-1]
+      base = recording + '/'
+      pipe = create_pipe(defn[1][1])
+      options = dict(defn[1][2:])
+      rate = options.get('rate', None)
+      if rate is None: raise ValueError("Input rate must be specified")
+      units = { -1: get_units(options.get('units', None)) }
+      binary = options.get('binary', False)
+      signals = [ ]
+      for n, sig in enumerate(defn[2]):
+        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
+        if len(sig) > 1 and sig[1][0] == 'units':
+          units[n] = get_units(sig[1][1])
+      streams.append(InputStream(recording, signals, units, rate, dtypes, pipe, binary))
+
+  sighandler.signal(sighandler.SIGINT, interrupt)
+  try:
+    for s in streams: s.start()
+  except Exception, msg:
+    _interrupted.set()
+    return msg
+  finally:
+    for s in streams:
+#      print s, s.is_alive(), s.pid, s.exitcode
+      if s.is_alive(): s.join(0.5)
+
+
+if __name__ == '__main__':
+#=========================
+
+  multiprocessing.freeze_support()
+  # We lock up with ^C interrupt unless multiprocessing has a logger
+  logger = multiprocessing.log_to_stderr()
+  logger.setLevel(logging.ERROR)
+
+  LOGFORMAT = '%(asctime)s %(levelname)8s %(processName)s: %(message)s'
+  logging.basicConfig(format=LOGFORMAT)
+  #if args['--debug']:
+  logging.getLogger().setLevel(logging.DEBUG)
 
   testdef = """
     stream <http://devel.biosignalml.org/testdata/sinewave>
@@ -293,64 +355,4 @@ if __name__ == '__main__':
 #     <signal/0> {'units': 'mV', 'rate': 10.0}
 #     <s3> {}
 
-
-
-  streams = [ ]
-  dtypes = { -1: 'f4' }   ## Don't allow user to specify
-
-  for defn in language.parse(testdef):
-
-    if   defn[0] == 'stream':
-      recording = defn[1][0][1:-1]
-      base = recording + '/'
-      pipe = defn[1][1]
-      if pipe != 'stdout':
-        pipe = os.path.abspath(pipe)
-      options = dict(defn[1][2:])
-      rate = options.get('rate', None)
-      units = { -1: get_units(options.get('units', None)) }
-      segment = get_interval(options.get('segment', None))
-      metadata = options.get('metadata', False)
-      binary = options.get('binary', False)
-      signals = [ ]
-      for n, sig in enumerate(defn[2]):
-        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
-        if len(sig) > 1 and sig[1][0] == 'units':
-          units[n] = get_units(sig[1][1])
-      streams.append(OutputStream(recording, signals, units, rate, dtypes, segment, not metadata, pipe, binary))
-
-    elif defn[0] == 'recording':
-      recording = defn[1][0][1:-1]
-      base = recording + '/'
-      pipe = defn[1][1]
-      if pipe != 'stdin':
-        pipe = os.path.abspath(pipe)
-        try:
-          os.makedirs(os.path.dirname(pipe))
-          os.mkfifo(pipe, 0600)
-        except OSError, e:
-          if e.errno == errno.EEXIST: pass
-          else: raise
-      options = dict(defn[1][2:])
-      rate = options.get('rate', None)
-      if rate is None: raise ValueError("Input rate must be specified")
-      units = { -1: get_units(options.get('units', None)) }
-      binary = options.get('binary', False)
-      signals = [ ]
-      for n, sig in enumerate(defn[2]):
-        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
-        if len(sig) > 1 and sig[1][0] == 'units':
-          units[n] = get_units(sig[1][1])
-      streams.append(InputStream(recording, signals, units, rate, dtypes, pipe, binary))
-
-  sighandler.signal(sighandler.SIGINT, interrupt)
-  try:
-    for s in streams: s.start()
-  except Exception, msg:
-    _interrupted.set()
-    sys.exit(msg)
-  finally:
-    for s in streams:
-#      print s, s.is_alive(), s.pid, s.exitcode
-      if s.is_alive(): s.join(0.5)
-
+  sys.exit(stream_data(testdef))
