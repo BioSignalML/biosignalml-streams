@@ -175,12 +175,10 @@ class OutputStream(multiprocessing.Process):
     except Exception, err:
       logging.debug("ERROR: %s", err)
     finally:
-      logging.debug("Finishing...")
       for r in readers:
         if r.is_alive(): r.terminate()
-      if fifo:
-        os.close(fd)
-        logging.debug("Closed output pipe...")
+      if fifo: os.close(fd)  # Don't close stdout
+      logging.debug("Finished output: %s", self._pipe)
 
 
 class InputStream(multiprocessing.Process):
