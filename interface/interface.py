@@ -251,8 +251,8 @@ class InputStream(multiprocessing.Process):
     self._repo.close()
 
 
-def stream_data(connections):
-#============================
+def stream_data(connections, stdin_used):
+#========================================
 
   def get_units(units):
   #--------------------
@@ -274,6 +274,8 @@ def stream_data(connections):
 
   def create_pipe(name):
   #---------------------
+    if stdin_used and name == 'stdin':
+      raise ValueError("Cannot receive stream on standard input")
     if name in ['stdin', 'stdout']:
       return name
     pipe = os.path.abspath(name)
@@ -327,7 +329,6 @@ def stream_data(connections):
         if len(sig) > 1 and sig[1][0] == 'units':
           units[n] = get_units(sig[1][1])
       streams.append(InputStream(recording, signals, units, rate, dtypes, pipe, binary))
-
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:
     for s in streams: s.start()
@@ -343,6 +344,8 @@ def stream_data(connections):
 if __name__ == '__main__':
 #=========================
 
+  import docopt
+
   multiprocessing.freeze_support()
   # We lock up with ^C interrupt unless multiprocessing has a logger
   logger = multiprocessing.log_to_stderr()
@@ -350,41 +353,39 @@ if __name__ == '__main__':
 
   LOGFORMAT = '%(asctime)s %(levelname)8s %(processName)s: %(message)s'
   logging.basicConfig(format=LOGFORMAT)
-  #if args['--debug']:
-  logging.getLogger().setLevel(logging.DEBUG)
 
-  testdef = """
-    stream <http://devel.biosignalml.org/testdata/sinewave>
-      to temp/pipe
-      rate=10000
-      segment = 0:1
-        [ <signal/0> units=mV ]
-    recording <http://devel.biosignalml.org/testdata/stream2>
-      from temp/pipe
-      rate=100
-        [ <s1> units=mV ]
-    """
+  usage = """Usage:
+  %(prog)s [options] [CONNECTION_FILE | -c CONNECTION]
+  %(prog)s (-h | --help)
 
-#      to /temp/pipe
-#      segment = 1:0.5
+Use definitions from either a file, the command line, or standard input to
+connect bteween signals in a BioSignalML repository and telemetry streams.
 
-# stream
-#   <http://devel.biosignalml.org/testdata/sinewave> /tmp/pipe
-#     {'units': 'mV', 'binary': 'yes', 'rate': 100.0, 'segment': ([10.0, ':', 5.0], {})}
-#     <signal/0> {}
-# stream
-#   <http://devel.biosignalml.org/testdata/sinewave> -
-#     {'segment': ([10.0, '-', 20.7], {}), 'metadata': 'no'}
-#     <signal/0> {'units': '<http://www.sbpax.org/uome/list.owl#Millivolt>'}
-#     <signal/0> {'units': 'mV'}
-# recording
-#   <http://devel.biosignalml.org/testdata/sinewave> /tmp/pipe
-#     {'rate': 3.0}
-#     <signal/0> {}
-# recording
-#   <http://devel.biosignalml.org/testdata/sinewave2> -
-#     {'units': '<my/units>'}
-#     <signal/0> {'units': 'mV', 'rate': 10.0}
-#     <s3> {}
+Options:
 
-  sys.exit(stream_data(testdef))
+  -h --help      Show this text and exit.
+
+  -c CONNECTION --connection CONNECTION
+
+                 Take connection information from the command line.
+
+  -d --debug     Enable debugging.
+
+  """
+
+  args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
+
+  if args['--debug']: logging.getLogger().setLevel(logging.DEBUG)
+  logging.debug("ARGS: %s", args)
+
+  stdin_used = False
+  if args['CONNECTION_FILE'] is not None:
+    with open(args['CONNECTION_FILE']) as f:
+      definitions = f.read()
+  elif args['--connection'] is not None:
+    definitions = args['--connection']
+  else:
+    definitions = sys.stdin.read()
+    stdin_used = True
+
+  sys.exit(stream_data(definitions, stdin_used))
