@@ -277,12 +277,14 @@ def stream_data(connections):
     if name in ['stdin', 'stdout']:
       return name
     pipe = os.path.abspath(name)
-    try:
-      os.makedirs(os.path.dirname(pipe))
-      os.mkfifo(pipe, 0600)
+    try: os.makedirs(os.path.dirname(pipe))
     except OSError, e:
       if e.errno == errno.EEXIST: pass
-      else: raise
+      else:                       raise
+    try: os.mkfifo(pipe, 0600)
+    except OSError, e:
+      if e.errno == errno.EEXIST: pass
+      else:                       raise
     return pipe
 
 
