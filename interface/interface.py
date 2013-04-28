@@ -4,7 +4,6 @@ import select
 import logging
 import urlparse
 import multiprocessing
-from multiprocessing import Process, Event, Lock
 import signal as sighandler
 
 from biosignalml.client import Repository
@@ -21,15 +20,15 @@ BUFFER_SIZE = 10000
 ##Otherwise all URIs must be for signals from the one BioSignalML recording.
 
 
-_interrupted = Event()
+_interrupted = multiprocessing.Event()
 
 def interrupt(signum, frame):
 #============================
   _interrupted.set()
 
 
-class SignalReader(Process):
-#===========================
+class SignalReader(multiprocessing.Process):
+#===========================================
 
   def __init__(self, signal, output, channel, ratechecker, **options):
   #-------------------------------------------------------------------
@@ -66,7 +65,7 @@ class RateChecker(object):
 
   def __init__(self, rate=None):
   #----------------------------
-    self._lock = Lock()
+    self._lock = multiprocessing.Lock()
     self._rate = rate
 
   def check(self, rate):
@@ -81,8 +80,8 @@ class RateChecker(object):
       raise ValueError("Signal rates don't match")
 
 
-class OutputStream(Process):
-#===========================
+class OutputStream(multiprocessing.Process):
+#===========================================
 
   def __init__(self, recording, signals, units, rate, dtypes, segment, nometadata, pipe, binary=False):
   #----------------------------------------------------------------------------------------------------
@@ -149,8 +148,8 @@ class OutputStream(Process):
         logging.debug("Closed output pipe...")
 
 
-class InputStream(Process):
-#==========================
+class InputStream(multiprocessing.Process):
+#==========================================
 
   def __init__(self, recording, signals, units, rate, dtypes, pipe, binary=False):
   #-------------------------------------------------------------------------------
