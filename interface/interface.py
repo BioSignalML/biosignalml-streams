@@ -122,7 +122,7 @@ class OutputStream(multiprocessing.Process):
       fd = sys.stdout.fileno()
       fifo = False
     else:
-      fd = os.open(self._pipe, os.O_WRONLY | os.O_NONBLOCK)
+      fd = os.open(self._pipe, os.O_RDWR)
       fifo = True
     for n, s in enumerate(self._signals):
       readers.append(SignalReader(s, output, n, ratechecker,
