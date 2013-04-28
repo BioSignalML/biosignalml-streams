@@ -111,10 +111,8 @@ class OutputStream(Process):
     #-----------------------
       pos = 0
       while pos < len(data):
-        ready = select.select([], [fd], [fd], 0.5)
-        if   len(ready[1]) == 0: continue
-        elif len(ready[2]) > 0:
-          raise IOError("Unexpected WRITE event")
+        ready = select.select([], [fd], [], 0.5)
+        if len(ready[1]) == 0: continue
         os.write(fd, data[pos:pos+select.PIPE_BUF])
         pos += select.PIPE_BUF
 
@@ -197,10 +195,8 @@ class InputStream(Process):
 #    for l in self._infile:      ### Binary.... ???
     buf = ''
     while True:
-      ready = select.select([fd], [], [fd], 0.5)
-      if   len(ready[0]) == 0: continue
-      elif len(ready[2]) > 0:
-        logging.debug("Unexpected READ event")
+      ready = select.select([fd], [], [], 0.5)
+      if len(ready[0]) == 0: continue
       indata = os.read(fd, 1024)
       if indata == '': break
       buf += indata
