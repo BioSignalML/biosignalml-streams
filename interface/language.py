@@ -61,7 +61,9 @@ def parse(definition):
   try:
     return _grammer.parseString(definition, parseAll=True)
   except pp.ParseException as err:
-    raise ValueError(err)
+    lines = definition.split('\n')
+    errlines = '\n'.join(lines[err.lineno-1:err.lineno+2])
+    raise ValueError("Syntax error in definition: \n%s" % errlines)
 
 
 if __name__ == '__main__':
