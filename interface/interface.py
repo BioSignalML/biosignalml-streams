@@ -28,6 +28,13 @@ def interrupt(signum, frame):
   _interrupted.set()
 
 
+def get_units(units, default=None):
+#----------------------------------
+  if   units in [None, '']: return default
+  elif units[0] == '<':     return units[1:-1]
+  else:                     return get_units_uri(units)
+
+
 class SynchroniseCondition(object):
 #==================================
 
@@ -114,15 +121,20 @@ class RateChecker(object):
 class OutputStream(multiprocessing.Process):
 #===========================================
 
-  def __init__(self, recording, signals, units, rate, dtypes, segment, nometadata, pipe, binary=False):
-  #----------------------------------------------------------------------------------------------------
+  def __init__(self, recording, signals, dtypes, segment, nometadata, pipe, binary=False):
+  #---------------------------------------------------------------------------------------
     super(OutputStream, self).__init__()
+    rec_uri = recording[0]
+    options = recording[1]
+    rate = options.get('rate')
+    units = { -1: get_units(options.get('units')) }
     self._signals = [ ]
-    repo = Repository(recording)
-    rec = repo.get_recording(recording)
+    repo = Repository(rec_uri)
+    rec = repo.get_recording(rec_uri)
     logging.debug("got recording: %s %s", type(rec), str(rec.uri))
-    for s in signals:
-      self._signals.append(repo.get_signal(s))
+    for n, s in enumerate(signals):
+      self._signals.append(repo.get_signal(s[0]))
+      units[n] = get_units(s[1].get('units'))
     rec.close()
     repo.close()
     logging.debug("got signals: %s", [ (type(s), str(s.uri)) for s in self._signals ])
@@ -184,24 +196,34 @@ class OutputStream(multiprocessing.Process):
 class InputStream(multiprocessing.Process):
 #==========================================
 
-  def __init__(self, recording, signals, units, rate, dtypes, pipe, binary=False):
-  #-------------------------------------------------------------------------------
+  def __init__(self, recording, signals, dtypes, pipe, binary=False):
+  #------------------------------------------------------------------
     super(InputStream, self).__init__()
+    rec_uri = recording[0]
+    options = recording[1]
+    rate = options.get('rate')
+    if rate is None: raise ValueError("Input rate must be specified")
+    units = { -1: get_units(options.get('units')) }
     self._rate = rate
     self._dtypes = dtypes
     self._pipe = pipe
     self._binary = binary
-    self._repo = Repository(recording)
-    self._recording = self._repo.new_recording(recording)  ##, description=, )
+    self._repo = Repository(rec_uri)
+    kwds = dict(label=options.get('label'), description=options.get('desc'))
+    self._recording = self._repo.new_recording(rec_uri, **kwds)
     self._signals = [ ]
-    for n, s in enumerate(signals):
+    for s in signals:
+      sig_uri = s[0]
+      sigopts = s[1]
       try:
-        rec = self._repo.get_recording(s)
-        if s != rec.uri: raise ValueError("Resource <%s> already in repository" % s)
+        rec = self._repo.get_recording(sig_uri)
+        if rec_uri != rec.uri: raise ValueError("Resource <%s> already in repository" % sig_uri)
       except IOError:
         pass
-      self._signals.append(self._recording.new_signal(s, units.get(n, units.get(-1)), rate=rate))
-
+      kwds = dict(rate=rate, label=sigopts.get('label'), description=sigopts.get('desc'))
+      self._signals.append(self._recording.new_signal(sig_uri,
+                                                      get_units(sigopts.get('units'), units),
+                                                      **kwds))
 
   def run(self):
   #-------------
@@ -254,12 +276,6 @@ class InputStream(multiprocessing.Process):
 def stream_data(connections, stdin_used):
 #========================================
 
-  def get_units(units):
-  #--------------------
-    if   units in [None, '']: return None
-    elif units[0] == '<':     return units[1:-1]
-    else:                     return get_units_uri(units)
-
   def get_interval(segment):
   #-------------------------
     if segment is None:
@@ -302,33 +318,21 @@ def stream_data(connections, stdin_used):
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
-      rate = options.get('rate')
-      units = { -1: get_units(options.get('units')) }
-      segment = get_interval(options.get('segment'))
-      metadata = options.get('metadata', False)
-      binary = options.get('binary', False)
-      signals = [ ]
-      for n, sig in enumerate(defn[2]):
-        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
-        if len(sig) > 1 and sig[1][0] == 'units':
-          units[n] = get_units(sig[1][1])
-      streams.append(OutputStream(recording, signals, units, rate, dtypes, segment, not metadata, pipe, binary))
+      segment = get_interval(options.pop('segment', None))
+      metadata = options.pop('metadata', False)
+      binary = options.pop('binary', False)
+      signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
+      streams.append(OutputStream((recording, options), signals, dtypes, segment, not metadata, pipe, binary))
       _sender_lock.add_waiter()
     elif defn[0] == 'recording':
       recording = defn[1][0][1:-1]
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
-      rate = options.get('rate')
-      if rate is None: raise ValueError("Input rate must be specified")
-      units = { -1: get_units(options.get('units')) }
-      binary = options.get('binary', False)
-      signals = [ ]
-      for n, sig in enumerate(defn[2]):
-        signals.append(urlparse.urljoin(base, sig[0][1:-1]))
-        sigopts = dict(sig[1:])
-        units[n] = get_units(sigopts.get('units'))
-      streams.append(InputStream(recording, signals, units, rate, dtypes, pipe, binary))
+      binary = options.pop('binary', False)
+      signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
+      streams.append(InputStream((recording, options), signals, dtypes, pipe, binary))
+
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:
     for s in streams: s.start()
