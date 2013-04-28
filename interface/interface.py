@@ -302,9 +302,9 @@ def stream_data(connections, stdin_used):
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
-      rate = options.get('rate', None)
-      units = { -1: get_units(options.get('units', None)) }
-      segment = get_interval(options.get('segment', None))
+      rate = options.get('rate')
+      units = { -1: get_units(options.get('units')) }
+      segment = get_interval(options.get('segment'))
       metadata = options.get('metadata', False)
       binary = options.get('binary', False)
       signals = [ ]
@@ -319,15 +319,15 @@ def stream_data(connections, stdin_used):
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
-      rate = options.get('rate', None)
+      rate = options.get('rate')
       if rate is None: raise ValueError("Input rate must be specified")
-      units = { -1: get_units(options.get('units', None)) }
+      units = { -1: get_units(options.get('units')) }
       binary = options.get('binary', False)
       signals = [ ]
       for n, sig in enumerate(defn[2]):
         signals.append(urlparse.urljoin(base, sig[0][1:-1]))
-        if len(sig) > 1 and sig[1][0] == 'units':
-          units[n] = get_units(sig[1][1])
+        sigopts = dict(sig[1:])
+        units[n] = get_units(sigopts.get('units'))
       streams.append(InputStream(recording, signals, units, rate, dtypes, pipe, binary))
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:
