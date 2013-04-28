@@ -287,12 +287,14 @@ def stream_data(connections):
       else:                       raise
     return pipe
 
+  try:
+    definitions = language.parse(connections)
+  except ValueError, msg:
+    return msg
 
   streams = [ ]
   dtypes = { -1: 'f4' }   ## Don't allow user to specify
-
-  for defn in language.parse(testdef):
-
+  for defn in definitions:
     if   defn[0] == 'stream':
       recording = defn[1][0][1:-1]
       base = recording + '/'
