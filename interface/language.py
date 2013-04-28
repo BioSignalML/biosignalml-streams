@@ -16,7 +16,11 @@ _path = _word
 _uri  = pp.Combine('<' + _path + '>')
 _pipe = pp.Word(pp.alphas + './', bodyChars=pp.printables, excludeChars=' ,;<>[]')
 
-_units = pp.Group(pp.CaselessKeyword('units') + pp.Suppress('=') + (_uri ^ _word))
+_quoted_word = (_word | pp.Suppress('"') + _word + pp.Suppress('"')
+                      | pp.Suppress("'") + _word + pp.Suppress("'"))
+
+
+_units = pp.Group(pp.CaselessKeyword('units') + pp.Suppress('=') + (_uri ^ _quoted_word))
 _rate  = pp.Group(pp.CaselessKeyword('rate') + pp.Suppress('=') + _number)
 _interval = pp.Group(pp.CaselessKeyword('segment') + pp.Suppress('=')
                    + pp.Group(_number + (pp.Literal('-') ^ pp.Literal(':')) + _number))
