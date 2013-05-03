@@ -273,8 +273,8 @@ class InputStream(multiprocessing.Process):
     self._repo.close()
 
 
-def stream_data(connections, stdin_used):
-#========================================
+def stream_data(connections):
+#============================
 
   def get_interval(segment):
   #-------------------------
@@ -290,8 +290,6 @@ def stream_data(connections, stdin_used):
 
   def create_pipe(name):
   #---------------------
-    if stdin_used and name == 'stdin':
-      raise ValueError("Cannot receive stream on standard input")
     if name in ['stdin', 'stdout']:
       return name
     pipe = os.path.abspath(name)
@@ -359,19 +357,18 @@ if __name__ == '__main__':
   logging.basicConfig(format=LOGFORMAT)
 
   usage = """Usage:
-  %(prog)s [options] [CONNECTION_FILE | -c CONNECTION]
+  %(prog)s [options] (CONNECTION_DEFINITION | -f FILE)
   %(prog)s (-h | --help)
 
-Use definitions from either a file, the command line, or standard input to
-connect bteween signals in a BioSignalML repository and telemetry streams.
+Connect a BioSignalML repository with telemetry streams,
+using definitions from either the command line or a file.
 
 Options:
 
   -h --help      Show this text and exit.
 
-  -c CONNECTION --connection CONNECTION
-
-                 Take connection information from the command line.
+  -f FILE --file FILE
+                 Take connection information from FILE.
 
   -d --debug     Enable debugging.
 
@@ -382,14 +379,10 @@ Options:
   if args['--debug']: logging.getLogger().setLevel(logging.DEBUG)
   logging.debug("ARGS: %s", args)
 
-  stdin_used = False
-  if args['CONNECTION_FILE'] is not None:
-    with open(args['CONNECTION_FILE']) as f:
+  if args['--file'] is not None:
+    with open(args['--file']) as f:
       definitions = f.read()
-  elif args['--connection'] is not None:
-    definitions = args['--connection']
-  else:
-    definitions = sys.stdin.read()
-    stdin_used = True
+  elif args['CONNECTION_DEFINITION'] is not None:
+    definitions = args['CONNECTION_DEFINITION']
 
-  sys.exit(stream_data(definitions, stdin_used))
+  sys.exit(stream_data(definitions))
