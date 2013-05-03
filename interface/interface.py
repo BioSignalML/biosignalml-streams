@@ -90,7 +90,7 @@ class SignalReader(multiprocessing.Process):
           self._ratechecker.check(None)
           self._output.put_data(self._channel, ts.points)
     except Exception, err:
-      logging.debug("ERROR: %s", err)
+      logging.error("ERROR: %s", err)
     finally:
       logging.debug("Reader exit... %d", self._channel)
       self._output.put_data(self._channel, None)
@@ -185,7 +185,7 @@ class OutputStream(multiprocessing.Process):
         if not self._binary: send_data(fd, '\n')
         if fifo: os.fsync(fd)
     except Exception, err:
-      logging.debug("ERROR: %s", err)
+      logging.error("ERROR: %s", err)
     finally:
       for r in readers:
         if r.is_alive(): r.terminate()
