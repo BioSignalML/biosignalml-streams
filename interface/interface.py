@@ -183,7 +183,7 @@ class OutputStream(multiprocessing.Process):
         if _interrupted.is_set(): break
         send_data(fd, frame)
         if not self._binary: send_data(fd, '\n')
-        os.fsync(fd)   ## Does this slowdown stdout ??
+        if fifo: os.fsync(fd)
     except Exception, err:
       logging.debug("ERROR: %s", err)
     finally:
