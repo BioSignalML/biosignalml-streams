@@ -285,7 +285,7 @@ def stream_data(connections):
       ## ISO durations.... OR seconds...
       return tuple(times)
     elif segment[1] == '-':
-      if times[1] >= times[0]: raise ValueError("Duration can't be negative")
+      if times[1] < times[0]: raise ValueError("Duration can't be negative")
       return [ times[0], times[1] - times[0] ]
 
   def create_pipe(name):
