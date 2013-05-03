@@ -196,8 +196,8 @@ class OutputStream(multiprocessing.Process):
 class InputStream(multiprocessing.Process):
 #==========================================
 
-  def __init__(self, recording, signals, dtypes, pipe, binary=False):
-  #------------------------------------------------------------------
+  def __init__(self, recording, signals, dtypes, pipename, fd=None, binary=False):
+  #-------------------------------------------------------------------------------
     super(InputStream, self).__init__()
     rec_uri = recording[0]
     options = recording[1]
@@ -206,7 +206,8 @@ class InputStream(multiprocessing.Process):
     units = { -1: get_units(options.get('units')) }
     self._rate = rate
     self._dtypes = dtypes
-    self._pipe = pipe
+    self._pipename = pipename
+    self._fd = fd
     self._binary = binary
     self._repo = Repository(rec_uri)
     kwds = dict(label=options.get('label'), description=options.get('desc'))
@@ -241,8 +242,8 @@ class InputStream(multiprocessing.Process):
     frames = 0
     channels = len(self._signals)
     data = newdata(channels)
-    if self._pipe == 'stdin':
-      fd = sys.stdin.fileno()
+    if self._pipename == 'stdin':
+      fd = self._fd
     else:
       fd = os.open(self._pipe, os.O_RDONLY | os.O_NONBLOCK)
 
@@ -327,9 +328,10 @@ def stream_data(connections):
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
+      fd = sys.stdin.fileno() if pipe == 'stdin' else None
       binary = options.pop('binary', False)
       signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
-      streams.append(InputStream((recording, options), signals, dtypes, pipe, binary))
+      streams.append(InputStream((recording, options), signals, dtypes, pipe, fd, binary))
 
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:
