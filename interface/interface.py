@@ -82,6 +82,7 @@ class SignalReader(multiprocessing.Process):
 
   def run(self):
   #-------------
+    logging.debug("Running process: %d", self.pid)
     logging.debug("Starting channel %d", self._channel)
     try:
       for ts in self._signal.read(**self._options):
@@ -161,10 +162,13 @@ class OutputStream(multiprocessing.Process):
         os.write(fd, data[pos:pos+select.PIPE_BUF])
         pos += select.PIPE_BUF
 
+    logging.debug("Running process: %d", self.pid)
     output = framestream.FrameStream(len(self._signals), self._nometadata, self._binary)
     ratechecker = RateChecker(self._rate)
     readers = [ ]
     fd = os.open(self._pipename, os.O_WRONLY)  # Write will block until there's a reader
+    logging.debug("Writing to FD: %d", fd)
+
     for n, s in enumerate(self._signals):
       readers.append(SignalReader(s, output, n, ratechecker,
                                   rate=self._rate,
@@ -209,6 +213,7 @@ class InputStream(multiprocessing.Process):
     self._repo = Repository(rec_uri)
     kwds = dict(label=options.get('label'), description=options.get('desc'))
     self._recording = self._repo.new_recording(rec_uri, **kwds)
+    logging.debug("Created %s", self._recording.uri)
     self._signals = [ ]
     for s in signals:
       sig_uri = s[0]
@@ -235,11 +240,13 @@ class InputStream(multiprocessing.Process):
       for n, s in enumerate(signals):
         s.append(data[n], dtype=self._dtypes.get(n, self._dtypes.get(-1)))
 
+    logging.debug("Running process: %d", self.pid)
     count = 0
     frames = 0
     channels = len(self._signals)
     data = newdata(channels)
     fd = os.open(self._pipename, os.O_RDONLY | os.O_NONBLOCK)
+    logging.debug("Reading from FD: %d", fd)
 
 #    for l in self._infile:      ### Binary.... ???
     buf = ''
@@ -337,8 +344,8 @@ def stream_data(connections):
     logging.error("ERROR: %s", msg)
     return msg
   finally:
-#      print s, s.is_alive(), s.pid, s.exitcode
     for s in (write_streams + read_streams):
+      logging.debug("%s %s %s %s", s, s.is_alive(), s.pid, s.exitcode)
       if s.is_alive(): s.join(0.5)
 
 
