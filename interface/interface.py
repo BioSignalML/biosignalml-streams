@@ -20,6 +20,9 @@ BUFFER_SIZE = 10000
 ##Stream signals at the given RATE.
 ##Otherwise all URIs must be for signals from the one BioSignalML recording.
 
+global _debugging
+_debugging = False
+
 
 _interrupted = multiprocessing.Event()
 
@@ -330,6 +333,8 @@ def stream_data(connections):
     for s in write_streams: s.start()
   except Exception, msg:
     _interrupted.set()
+    if _debugging: raise
+    logging.error("ERROR: %s", msg)
     return msg
   finally:
 #      print s, s.is_alive(), s.pid, s.exitcode
@@ -370,7 +375,9 @@ Options:
 
   args = docopt.docopt(usage % { 'prog': sys.argv[0] } )
 
-  if args['--debug']: logging.getLogger().setLevel(logging.DEBUG)
+  if args['--debug']:
+    _debugging = True
+    logging.getLogger().setLevel(logging.DEBUG)
   logging.debug("ARGS: %s", args)
 
   if args['--file'] is not None:
