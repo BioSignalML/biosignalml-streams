@@ -335,7 +335,7 @@ def stream_data(connections):
       read_streams.append(InputStream((recording, options), signals, dtypes, pipe, binary))
 
   sighandler.signal(sighandler.SIGINT, interrupt)
-  try:
+  try:    # Start all readers before streaming anything
     for s in read_streams: s.start()
     for s in write_streams: s.start()
   except Exception, msg:
