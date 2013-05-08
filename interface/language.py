@@ -40,8 +40,7 @@ _output_signal  = pp.Group(_uri + pp.Optional(_units) + pp.Suppress(pp.Optional(
 _output_signals = pp.Group(pp.Suppress('[') + pp.ZeroOrMore(_output_signal) + pp.Suppress(']'))
 _output_statement = pp.Group(pp.CaselessKeyword('stream')
                           + pp.Group(_uri
-                                   + pp.Optional(pp.CaselessKeyword('to').suppress() + _pipe,
-                                                            default='stdout')
+                                   + pp.CaselessKeyword('to').suppress() + _pipe
                                    + pp.ZeroOrMore(_output_options))
                           + _output_signals)
 
@@ -52,8 +51,7 @@ _input_signal  = pp.Group(_uri + pp.ZeroOrMore(_input_sigopts))
 _input_signals = pp.Group(pp.Suppress('[') + pp.ZeroOrMore(_input_signal) + pp.Suppress(']'))
 _input_statement = pp.Group(pp.CaselessKeyword('recording')
                           + pp.Group(_uri
-                                   + pp.Optional(pp.CaselessKeyword('from').suppress() + _pipe,
-                                                            default='stdin')
+                                   + pp.CaselessKeyword('from').suppress() + _pipe
                                    + pp.ZeroOrMore(_input_options))
                           + _input_signals)
 
@@ -85,6 +83,7 @@ if __name__ == '__main__':
       <signal/0>
       ] ,
     stream <http://devel.biosignalml.org/testdata/sinewave>
+      to /tmp/pipe1
       segment = 10-20.7,
       metadata = no
      [
@@ -92,12 +91,16 @@ if __name__ == '__main__':
       <signal/0> units=mV
       ]
     recording <http://devel.biosignalml.org/testdata/sinewave> from /tmp/pipe
-     rate = 3
-     desc="An example"
+      from /tmp/pipe2
+      rate = 3
+      desc="An example"
      [
        <signal/0> label="abc x" desc="hgv hgv j" units=mV
        ] ;
-    recording <http://devel.biosignalml.org/testdata/sinewave2> units=<my/units> rate = 10 [
+    recording <http://devel.biosignalml.org/testdata/sinewave2>
+      from /tmp/pipe3
+      units=<my/units> rate = 10
+     [
       <signal/0> units=mV,
       <s3>
       ]"""

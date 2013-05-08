@@ -121,8 +121,8 @@ class RateChecker(object):
 class OutputStream(multiprocessing.Process):
 #===========================================
 
-  def __init__(self, recording, signals, dtypes, segment, nometadata, pipe, binary=False):
-  #---------------------------------------------------------------------------------------
+  def __init__(self, recording, signals, dtypes, segment, no_metadata, pipename, binary=False):
+  #--------------------------------------------------------------------------------------------
     super(OutputStream, self).__init__()
     rec_uri = recording[0]
     options = recording[1]
@@ -142,8 +142,8 @@ class OutputStream(multiprocessing.Process):
     self._rate = rate
     self._dtypes = dtypes
     self._segment = segment
-    self._nometadata = nometadata
-    self._pipe = pipe
+    self._nometadata = no_metadata
+    self._pipename = pipename
     self._binary = binary
 
   def run(self):
@@ -161,12 +161,7 @@ class OutputStream(multiprocessing.Process):
     output = framestream.FrameStream(len(self._signals), self._nometadata, self._binary)
     ratechecker = RateChecker(self._rate)
     readers = [ ]
-    if self._pipe == 'stdout':
-      fd = sys.stdout.fileno()
-      fifo = False
-    else:
-      fd = os.open(self._pipe, os.O_RDWR)
-      fifo = True
+    fd = os.open(self._pipename, os.O_WRONLY)  # Write will block until there's a reader
     for n, s in enumerate(self._signals):
       readers.append(SignalReader(s, output, n, ratechecker,
                                   rate=self._rate,
@@ -183,21 +178,21 @@ class OutputStream(multiprocessing.Process):
         if _interrupted.is_set(): break
         send_data(fd, frame)
         if not self._binary: send_data(fd, '\n')
-        if fifo: os.fsync(fd)
+        os.fsync(fd)
     except Exception, err:
       logging.error("ERROR: %s", err)
     finally:
       for r in readers:
         if r.is_alive(): r.terminate()
-      if fifo: os.close(fd)  # Don't close stdout
-      logging.debug("Finished output: %s", self._pipe)
+      os.close(fd)
+      logging.debug("Finished output: %s", self._pipename)
 
 
 class InputStream(multiprocessing.Process):
 #==========================================
 
-  def __init__(self, recording, signals, dtypes, pipename, fd=None, binary=False):
-  #-------------------------------------------------------------------------------
+  def __init__(self, recording, signals, dtypes, pipename, binary=False):
+  #----------------------------------------------------------------------
     super(InputStream, self).__init__()
     rec_uri = recording[0]
     options = recording[1]
@@ -207,7 +202,6 @@ class InputStream(multiprocessing.Process):
     self._rate = rate
     self._dtypes = dtypes
     self._pipename = pipename
-    self._fd = fd
     self._binary = binary
     self._repo = Repository(rec_uri)
     kwds = dict(label=options.get('label'), description=options.get('desc'))
@@ -242,10 +236,7 @@ class InputStream(multiprocessing.Process):
     frames = 0
     channels = len(self._signals)
     data = newdata(channels)
-    if self._pipename == 'stdin':
-      fd = self._fd
-    else:
-      fd = os.open(self._pipe, os.O_RDONLY | os.O_NONBLOCK)
+    fd = os.open(self._pipename, os.O_RDONLY | os.O_NONBLOCK)
 
 #    for l in self._infile:      ### Binary.... ???
     buf = ''
@@ -291,8 +282,6 @@ def stream_data(connections):
 
   def create_pipe(name):
   #---------------------
-    if name in ['stdin', 'stdout']:
-      return name
     pipe = os.path.abspath(name)
     try: os.makedirs(os.path.dirname(pipe))
     except OSError, e:
@@ -309,9 +298,11 @@ def stream_data(connections):
   except ValueError, msg:
     return msg
 
-  streams = [ ]
+  write_streams = [ ]
+  read_streams = [ ]
   dtypes = { -1: 'f4' }   ## Don't allow user to specify
   for defn in definitions:
+
     if   defn[0] == 'stream':
       recording = defn[1][0][1:-1]
       base = recording + '/'
@@ -321,27 +312,28 @@ def stream_data(connections):
       metadata = options.pop('metadata', False)
       binary = options.pop('binary', False)
       signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
-      streams.append(OutputStream((recording, options), signals, dtypes, segment, not metadata, pipe, binary))
+      write_streams.append(OutputStream((recording, options), signals, dtypes, segment, not metadata, pipe, binary))
       _sender_lock.add_waiter()
+
     elif defn[0] == 'recording':
       recording = defn[1][0][1:-1]
       base = recording + '/'
       pipe = create_pipe(defn[1][1])
       options = dict(defn[1][2:])
-      fd = sys.stdin.fileno() if pipe == 'stdin' else None
       binary = options.pop('binary', False)
       signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
-      streams.append(InputStream((recording, options), signals, dtypes, pipe, fd, binary))
+      read_streams.append(InputStream((recording, options), signals, dtypes, pipe, binary))
 
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:
-    for s in streams: s.start()
+    for s in read_streams: s.start()
+    for s in write_streams: s.start()
   except Exception, msg:
     _interrupted.set()
     return msg
   finally:
-    for s in streams:
 #      print s, s.is_alive(), s.pid, s.exitcode
+    for s in (write_streams + read_streams):
       if s.is_alive(): s.join(0.5)
 
 
