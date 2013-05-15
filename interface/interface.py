@@ -9,11 +9,13 @@ import signal as sighandler
 
 from biosignalml.client import Repository
 from biosignalml.units import get_units_uri
+from biosignalml.model import BSML
+import biosignalml.rdf as rdf
 
 import language
 import framestream
 
-VERSION = '0.5.0'
+VERSION = '0.6.0'
 
 BUFFER_SIZE = 10000
 
@@ -125,28 +127,25 @@ class RateChecker(object):
 class OutputStream(multiprocessing.Process):
 #===========================================
 
-  def __init__(self, recording, signals, dtypes, segment, no_metadata, pipename, binary=False):
-  #--------------------------------------------------------------------------------------------
+  def __init__(self, recording, options, signals, dtypes, segment, stream_meta, pipename, binary=False):
+  #-----------------------------------------------------------------------------------------------------
     super(OutputStream, self).__init__()
-    rec_uri = recording[0]
-    options = recording[1]
     rate = options.get('rate')
     units = { -1: get_units(options.get('units')) }
     self._signals = [ ]
-    repo = Repository(rec_uri)
-    rec = repo.get_recording(rec_uri)
-    logging.debug("got recording: %s %s", type(rec), str(rec.uri))
+    repo = recording.repository
+    logging.debug("got recording: %s %s", type(recording), str(recording.uri))
     for n, s in enumerate(signals):
       self._signals.append(repo.get_signal(s[0]))
       units[n] = get_units(s[1].get('units'))
-    rec.close()
+    recording.close()
     repo.close()
     logging.debug("got signals: %s", [ (type(s), str(s.uri)) for s in self._signals ])
     self._units = units
     self._rate = rate
     self._dtypes = dtypes
     self._segment = segment
-    self._nometadata = no_metadata
+    self._nometadata = not stream_meta
     self._pipename = pipename
     self._binary = binary
 
@@ -198,11 +197,9 @@ class OutputStream(multiprocessing.Process):
 class InputStream(multiprocessing.Process):
 #==========================================
 
-  def __init__(self, recording, signals, dtypes, pipename, binary=False):
-  #----------------------------------------------------------------------
+  def __init__(self, rec_uri, options, metadata, signals, dtypes, pipename, binary=False):
+  #---------------------------------------------------------------------------------------
     super(InputStream, self).__init__()
-    rec_uri = recording[0]
-    options = recording[1]
     rate = options.get('rate')
     if rate is None: raise ValueError("Input rate must be specified")
     units = { -1: get_units(options.get('units')) }
@@ -213,6 +210,7 @@ class InputStream(multiprocessing.Process):
     self._repo = Repository(rec_uri)
     kwds = dict(label=options.get('label'), description=options.get('desc'))
     self._recording = self._repo.new_recording(rec_uri, **kwds)
+    self._recording.save_metadata(metadata.serialise())
     logging.debug("Created %s", self._recording.uri)
     self._signals = [ ]
     for s in signals:
@@ -249,6 +247,7 @@ class InputStream(multiprocessing.Process):
     logging.debug("Reading from FD: %d", fd)
 
 #    for l in self._infile:      ### Binary.... ???
+# Wrwp in try ... except ... finally
     buf = ''
     while True:
       ready = select.select([fd], [], [], 0.5)
@@ -275,8 +274,23 @@ class InputStream(multiprocessing.Process):
     self._repo.close()
 
 
-def stream_data(connections):
-#============================
+class DataSource(rdf.Graph):
+#===========================
+
+  def __init__(self, recording, segment):
+  #--------------------------------------
+    rec_uri = rdf.Uri(recording.uri)
+    if segment is None:
+      super(DataSource, self).__init__(rec_uri)
+    else:
+      seg_uri = rec_uri.make_uri(True)
+      super(DataSource, self).__init__(seg_uri)
+      seg = recording.new_segment(seg_uri, segment[0], segment[1])
+      seg.save_to_graph(self)
+
+
+def stream_data(connections, generate='auto', stream_data=True):
+#===============================================================
 
   def get_interval(segment):
   #-------------------------
@@ -304,35 +318,61 @@ def stream_data(connections):
     return pipe
 
   try:
-    definitions = language.parse(connections)
+    definitions = list(language.parse(connections))
   except ValueError, msg:
     return msg
 
   write_streams = [ ]
   read_streams = [ ]
   dtypes = { -1: 'f4' }   ## Don't allow user to specify
-  for defn in definitions:
+  sources = [ ]
+  for defn in [ d for d in definitions if d[0] == 'stream' ]:
+    rec_uri = defn[1][0][1:-1]
+    base = rec_uri + '/'
+    repo = Repository(rec_uri)
+    recording = repo.get_recording(rec_uri)
+    pipe = create_pipe(defn[1][1])
+    options = dict(defn[1][2:])
+    segment = get_interval(options.pop('segment', None))
+    sources.append(DataSource(recording, segment))
 
-    if   defn[0] == 'stream':
-      recording = defn[1][0][1:-1]
-      base = recording + '/'
-      pipe = create_pipe(defn[1][1])
-      options = dict(defn[1][2:])
-      segment = get_interval(options.pop('segment', None))
-      metadata = options.pop('metadata', False)
-      binary = options.pop('binary', False)
-      signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
-      write_streams.append(OutputStream((recording, options), signals, dtypes, segment, not metadata, pipe, binary))
+    stream_meta = options.pop('stream_meta', False)
+    binary = options.pop('binary', False)
+    signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
+    if stream_data:
+      write_streams.append(OutputStream(recording, options, signals, dtypes, segment, stream_meta, pipe, binary))
       _sender_lock.add_waiter()
 
-    elif defn[0] == 'recording':
-      recording = defn[1][0][1:-1]
-      base = recording + '/'
-      pipe = create_pipe(defn[1][1])
-      options = dict(defn[1][2:])
-      binary = options.pop('binary', False)
-      signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
-      read_streams.append(InputStream((recording, options), signals, dtypes, pipe, binary))
+  for defn in [ d for d in definitions if d[0] == 'recording' ]:
+    rec_uri = defn[1][0][1:-1]
+    base = rec_uri + '/'
+    pipe = create_pipe(defn[1][1])
+    options = dict(defn[1][2:])
+    binary = options.pop('binary', False)
+    signals = [ (urlparse.urljoin(base, sig[0][1:-1]), dict(sig[1:])) for sig in defn[2]]
+    turtle = defn[3].strip()
+    if generate == 'none' and turtle == '':
+      metadata = None
+    else:
+      metadata = rdf.Graph()
+      if (generate == 'all'
+       or generate == 'auto' and turtle == ''):  # add sources
+        for s in sources:
+          metadata.append(rdf.Statement(rec_uri, rdf.DCT.source, s.uri))
+          metadata.add_statements(s.as_stream())
+      if turtle != '':
+        # get from rdf plus BSML ??
+        ## rdf.NAMESPACES.
+        PREFIXES = {
+          'bsml': BSML.URI,
+          'dct':  'http://purl.org/dc/terms/',
+           }
+        # add base and standard prefixes, parse and add turtle
+        metadata.parse_string('\n'.join([ '@base <%s> .' % base ]
+                                      + [ '@prefix %s: <%s> .' % (p, u) for (p, u) in PREFIXES.iteritems() ]
+                                      + [ turtle ]), format=rdf.Format.TURTLE, base=base)
+    if stream_data:
+      read_streams.append(InputStream(rec_uri, options, metadata, signals, dtypes, pipe, binary))
 
   sighandler.signal(sighandler.SIGINT, interrupt)
   try:    # Start all readers before streaming anything
@@ -363,7 +403,7 @@ if __name__ == '__main__':
   logging.basicConfig(format=LOGFORMAT)
 
   usage = """Usage:
-  %(prog)s [options] (CONNECTION_DEFINITION | -f FILE)
+  %(prog)s [options] [--metadata=(auto | none | all)] (CONNECTION_DEFINITION | -f FILE)
   %(prog)s (-h | --help)
 
 Connect a BioSignalML repository with telemetry streams,
@@ -371,12 +411,32 @@ using definitions from either the command line or a file.
 
 Options:
 
-  -h --help      Show this text and exit.
+  -h --help       Show this text and exit.
 
-  -f FILE --file FILE
-                 Take connection information from FILE.
+  -f FILE --file=FILE
+                  Take connection information from FILE.
 
-  -d --debug     Enable debugging.
+  -d --debug      Enable debugging.
+
+  --metadata=(auto | none | all)
+                  Determines how additional metadata is generated for new
+                  recordings. Any metadata specified via the recording's
+                  definition is always used. [default: auto]
+
+                  'auto':  If no metadata is specified, the dct:source
+                           property is used to associate the new recording
+                           with all source recordings.
+
+                  'none':  No addititional metadata is generated.
+
+                  'all':   The dct:source property is used to associate
+                           the new recording with all source recordings,
+                           regardless of metadata being specified.
+
+  -n --no-stream  Parse options and connection definitions without
+                  actually sending or receiving data.
+
+  -v --version    Show version and exit.
 
   """
 
@@ -387,10 +447,16 @@ Options:
     logging.getLogger().setLevel(logging.DEBUG)
   logging.debug("ARGS: %s", args)
 
+  if args['--version']:
+    sys.exit('%s Version %s' % (sys.argv[0], VERSION))
+
+  if args['--metadata'] not in ['auto', 'none', 'all']:
+    sys.exit("'metadata' option must be one of 'auto', 'none', or 'all'")
+
   if args['--file'] is not None:
     with open(args['--file']) as f:
       definitions = f.read()
   elif args['CONNECTION_DEFINITION'] is not None:
     definitions = args['CONNECTION_DEFINITION']
 
-  sys.exit(stream_data(definitions))
+  sys.exit(stream_data(definitions, args['--metadata'], not args['--no-stream']))
