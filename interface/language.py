@@ -54,7 +54,7 @@ _stream_meta = pp.Group(pp.CaselessKeyword('stream_meta')
 
 _options  = (_rate | _units | _interval | _binary | _stream_meta)
 
-_desc = pp.Group(pp.CaselessKeyword('desc') + pp.Suppress('=') + _string)
+_desc = pp.Group(pp.CaselessKeyword('description') + pp.Suppress('=') + _string)
 _label = pp.Group(pp.CaselessKeyword('label') + pp.Suppress('=') + (_string ^ _word))
 
 
@@ -150,9 +150,9 @@ if __name__ == '__main__':
       from /tmp/pipe2
       rate = 3
       units = 'mV'
-      desc="An example"
+      description="An example"
      signals=[
-       <signal/0> label="abc x" desc="hgv hgv j" units=mV
+       <signal/0> label="abc x" description="hgv hgv j" units=mV
        ] ;
     recording <http://devel.biosignalml.org/testdata/sinewave2>
       from /tmp/pipe3
